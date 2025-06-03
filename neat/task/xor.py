@@ -13,8 +13,14 @@ class State(TaskState):
     labels: jnp.ndarray
 
 
-def mse_loss(prediction: jnp.ndarray, target: jnp.ndarray) -> jnp.float32:
-    return jnp.mean((prediction - target) ** 2)
+def sample_batch(key: jnp.ndarray, data: jnp.ndarray, labels: jnp.ndarray, batch_size: int) -> Tuple:
+    ix = random.choice(key=key, a=data.shape[0], shape=(batch_size,), replace=False)
+    return (jnp.take(data, indices=ix, axis=0), jnp.take(labels, indices=ix, axis=0))
+
+
+def loss_fn(prediction: jnp.ndarray, target: jnp.ndarray) -> jnp.float32:
+    per_example_losses = -jnp.sum(jax.nn.log_softmax(prediction, axis=-1) * jax.nn.one_hot(target, 2), axis=-1)
+    return jnp.mean(per_example_losses)
 
 
 def accuracy(prediction: jnp.ndarray, target: jnp.ndarray) -> jnp.float32:
@@ -27,7 +33,8 @@ class XOR(VectorizedTask):
 
     def __init__(
         self,
-        batch_size: int = 1024,
+        batch_size: int = 10,
+        dataset_size: int = 1000,
         test: bool = False,
     ):
         self.max_steps = 1
@@ -38,20 +45,22 @@ class XOR(VectorizedTask):
         train_key, test_key = random.split(key)
 
         # Training data (fixed)
-        X_train = random.uniform(train_key, (batch_size, 2), minval=-1, maxval=1)
+        X_train = random.uniform(train_key, (dataset_size, 2), minval=-1, maxval=1)
         self.train_labels = (X_train[:, 0] * X_train[:, 1] > 0).astype(int)
         self.train_data = X_train
 
         # Test data (different fixed set)
-        X_test = random.uniform(test_key, (batch_size, 2), minval=-1, maxval=1)
+        X_test = random.uniform(test_key, (dataset_size, 2), minval=-1, maxval=1)
         self.test_labels = (X_test[:, 0] * X_test[:, 1] > 0).astype(int)
         self.test_data = X_test
 
         def reset_fn(key):
             """Return fixed dataset, ignoring input key."""
             if test:
-                return State(obs=self.test_data, labels=self.test_labels)
-            return State(obs=self.train_data, labels=self.train_labels)
+                batch_data, batch_labels = self.test_data, self.test_labels
+            else:
+                batch_data, batch_labels = sample_batch(key, self.train_data, self.train_labels, batch_size)
+            return State(obs=batch_data, labels=batch_labels)
 
         self._reset_fn = jax.jit(jax.vmap(reset_fn))
 
@@ -59,7 +68,7 @@ class XOR(VectorizedTask):
             if test:
                 reward = accuracy(action, state.labels)
             else:
-                reward = -mse_loss(action, state.labels)
+                reward = -loss_fn(action, state.labels)
             return state, reward, jnp.ones(())
 
         self._step_fn = jax.jit(jax.vmap(step_fn))
