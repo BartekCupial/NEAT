@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Tuple, Union
 
 import jax
 import jax.numpy as jnp
+import networkx as nx
 import numpy as np
 from evojax.algo.base import NEAlgorithm
 from evojax.util import create_logger
@@ -351,11 +352,20 @@ class JAX_NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
         return new_nodes, new_connections
 
+    def _build_graph(self, connections: Dict[int, ConnectionGene]) -> nx.DiGraph:
+        """Build a directed graph from the connections."""
+        graph = nx.DiGraph()
+        for conn in connections.values():
+            graph.add_edge(conn.in_node_id, conn.out_node_id, weight=conn.weight)
+        return graph
+
     def _mutate_add_connection(
         self, nodes: Dict[int, NodeGene], connections: Dict[int, ConnectionGene], key: jax.random.PRNGKey
     ) -> Dict:
         """Mutate the genome by adding a new connection."""
         node_ids = list(nodes.keys())
+
+        connection_graph = self._build_graph(connections)
 
         potential_connections = []
         for in_node in node_ids:
@@ -366,8 +376,9 @@ class JAX_NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
                     and in_node != out_node
                     and (in_node, out_node) not in self.global_innovations
                 ):
-                    # TODO: prevent recursive connections
-                    # Check if there is a path from out_node to in_node
+                    # Skip recurrent connections
+                    if nx.has_path(connection_graph, out_node, in_node):
+                        continue
 
                     potential_connections.append((in_node, out_node))
 

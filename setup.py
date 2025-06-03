@@ -34,6 +34,7 @@ setup(
     },
     install_requires=[
         "opencv-python",
+        "networkx",
     ],
     extras_require={
         # some tests require Atari and Mujoco so let's make sure dev environment has that
