@@ -1,9 +1,7 @@
-import sys
 from typing import Tuple
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 from evojax.task.base import TaskState, VectorizedTask
 from flax.struct import dataclass
 from jax import random
@@ -33,12 +31,8 @@ class XOR(VectorizedTask):
         test: bool = False,
     ):
         self.max_steps = 1
-        self.obs_shape = tuple(
-            2,
-        )
-        self.act_shape = tuple(
-            1,
-        )
+        self.obs_shape = tuple((2,))
+        self.act_shape = tuple((1,))
 
         key = random.PRNGKey(0)
         train_key, test_key = random.split(key)
