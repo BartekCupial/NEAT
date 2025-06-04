@@ -8,11 +8,11 @@ import os
 import shutil
 
 from evojax import util
-from evojax.algo import PGPE
-from evojax.policy.mlp import MLPPolicy
-from evojax.trainer import Trainer
 
+from neat.algo import NEAT
+from neat.policy import NEATPolicy
 from neat.task import XOR
+from neat.trainer import NEATTrainer
 
 
 def parse_args():
@@ -23,10 +23,17 @@ def parse_args():
     parser.add_argument("--max-iter", type=int, default=5000, help="Max training iterations.")
     parser.add_argument("--test-interval", type=int, default=1000, help="Test interval.")
     parser.add_argument("--log-interval", type=int, default=100, help="Logging interval.")
+    parser.add_argument("--c1", type=float, default=1.0, help="NEAT c1 parameter.")
+    parser.add_argument("--c2", type=float, default=1.0, help="NEAT c2 parameter.")
+    parser.add_argument("--c3", type=float, default=0.4, help="NEAT c3 parameter.")
+    parser.add_argument("--compatibility-threshold", type=float, default=3.0, help="NEAT compatibility threshold.")
+    parser.add_argument("--survival-threshold", type=float, default=0.2, help="NEAT survival threshold.")
+    parser.add_argument("--backprop-steps", type=int, default=20, help="Number of backpropagation steps.")
+    parser.add_argument("--learning-rate", type=float, default=0.001, help="Learning rate for backpropagation.")
+    parser.add_argument(
+        "--optimizer", type=str, default="adam", choices=["adam", "sgd", "rmsprop"], help="Optimizer type."
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed for training.")
-    parser.add_argument("--center-lr", type=float, default=0.006, help="Center learning rate.")
-    parser.add_argument("--std-lr", type=float, default=0.089, help="Std learning rate.")
-    parser.add_argument("--init-std", type=float, default=0.039, help="Initial std.")
     parser.add_argument("--gpu-id", type=str, help="GPU(s) to use.")
     parser.add_argument("--debug", action="store_true", help="Debug mode.")
     config, _ = parser.parse_known_args()
@@ -41,22 +48,24 @@ def main(config):
     logger.info("EvoJAX XOR Demo")
     logger.info("=" * 30)
 
-    policy = MLPPolicy(input_dim=2, hidden_dims=[4], output_dim=2, output_act_fn="tanh", logger=logger)
+    policy = NEATPolicy()
     train_task = XOR(batch_size=config.batch_size, dataset_size=config.dataset_size, test=False)
     test_task = XOR(batch_size=config.batch_size, dataset_size=config.dataset_size, test=True)
-    solver = PGPE(
+    solver = NEAT(
         pop_size=config.pop_size,
-        param_size=policy.num_params,
-        optimizer="adam",
-        center_learning_rate=config.center_lr,
-        stdev_learning_rate=config.std_lr,
-        init_stdev=config.init_std,
+        num_inputs=2,  # XOR has 2 inputs
+        num_outputs=2,  # XOR has 2 outputs
+        survival_threshold=config.survival_threshold,  # NEAT-specific parameter
+        compatibility_threshold=config.compatibility_threshold,  # For speciation
+        c1=config.c1,
+        c2=config.c2,
+        c3=config.c3,
         logger=logger,
         seed=config.seed,
     )
 
     # Train.
-    trainer = Trainer(
+    trainer = NEATTrainer(
         policy=policy,
         solver=solver,
         train_task=train_task,
