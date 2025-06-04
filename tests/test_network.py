@@ -47,6 +47,43 @@ class TestNetwork(object):
 
         assert jnp.all(outputs == 0.75)
 
+    def test_gradients(self, genome: NEATGenome):
+        """Test the gradients of the network."""
+        network = Network(genome)
+        inputs = jnp.array([[0.5, 0.5, 0.5]])
+        targets = jnp.array([[1.0]])
+
+        params = network.init()
+
+        def loss_fn(predictions, targets):
+            return jnp.mean((predictions - targets) ** 2)
+
+        def model_loss_for_grad(model_params, obs_batch, labels_batch):
+            predictions = network.apply(model_params, obs_batch)
+            return loss_fn(predictions, labels_batch)
+
+        grads = jax.grad(model_loss_for_grad)(params, inputs, targets)
+
+        # Gradient Calculation
+        # With prediction = 0.75, target = 1.0:
+        #     Loss: (0.75 - 1.0)² = 0.0625
+        #     ∂Loss/∂output: 2 × (0.75 - 1.0) = -0.5
+        # Gradients for connections to output node 4:
+        #     ∂Loss/∂w(1→4): -0.5 × input = -0.5 × 0.5 = -0.25
+        #     ∂Loss/∂w(3→4): -0.5 × input = -0.5 × 0.5 = -0.25
+        #     ∂Loss/∂w(5→4): -0.5 × hidden = -0.5 × 0.5 = -0.25
+        # Gradients for connections to hidden node 5:
+        #     ∂Loss/∂w(2→5): -0.25 × input = -0.25 × 0.5 = -0.125
+        #     ∂Loss/∂w(1→5): -0.25 × input = -0.25 × 0.5 = -0.125
+
+        assert grads is not None
+        assert grads["weights"][4, 0] == -0.25  # w(1→4)
+        assert grads["weights"][4, 2] == -0.25  # w(3→4)
+        assert grads["weights"][4, 3] == -0.25  # w(5→4)
+        assert grads["weights"][3, 0] == -0.125  # w(1→5)
+        assert grads["weights"][3, 1] == -0.125  # w(2→5)
+        assert grads["weights"][4, 1] == 0.0  # w(2→4) should not change since it's disabled
+
     def test_train(self, genome: NEATGenome):
         """Test the training process of the network."""
         network = Network(genome)
@@ -75,3 +112,18 @@ class TestNetwork(object):
             params, opt_state, loss = update(params, opt_state, inputs, targets)
 
         assert loss < 0.01
+
+        mask = jnp.array(
+            [
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
+                [1, 1, 0, 0, 0],
+                [1, 0, 1, 1, 0],
+            ]
+        )
+
+        assert (
+            jnp.sum(params["weights"] * jnp.logical_not(mask)) == 0
+        ), "Weights for disabled connections should be zero"
+        assert jnp.array_equal(params["weights"] != 0, mask), "Weights for enabled connections should not be zero"

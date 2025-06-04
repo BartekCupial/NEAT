@@ -82,6 +82,25 @@ class Network:
     def init(self) -> Dict:
         return {"weights": self.compiled_network["adjacency"], "biases": self.compiled_network["biases"]}
 
+    def _create_enabled_mask(self) -> jnp.ndarray:
+        """Create a boolean mask for enabled connections."""
+        compiled = self.compiled_network
+        n_nodes = compiled["n_nodes"]
+        mask = jnp.zeros((n_nodes, n_nodes), dtype=bool)
+
+        # Set True for enabled connections
+        for conn in self.genome.connections.values():
+            if (
+                conn.enabled
+                and conn.in_node_id in compiled["node_to_idx"]
+                and conn.out_node_id in compiled["node_to_idx"]
+            ):
+                i = compiled["node_to_idx"][conn.in_node_id]
+                j = compiled["node_to_idx"][conn.out_node_id]
+                mask = mask.at[j, i].set(True)
+
+        return mask
+
     def apply(self, params: Dict, inputs: jnp.ndarray) -> jnp.ndarray:
         """Forward pass through the network."""
         compiled = self.compiled_network
@@ -104,7 +123,12 @@ class Network:
         activations = activations.at[:, input_indices].set(inputs)
 
         # Process nodes in evaluation order (excluding inputs)
-        weights = params["weights"]
+        # Use stop_gradient to prevent gradients through masked-out connections
+        enabled_mask = self._create_enabled_mask()
+        raw_weights = params["weights"]
+        stop_gradient = jax.lax.stop_gradient(jnp.zeros_like(raw_weights))
+
+        weights = jnp.where(enabled_mask, raw_weights, stop_gradient)
         biases = params["biases"]
 
         # For each non-input node, compute its activation
