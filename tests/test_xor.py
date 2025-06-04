@@ -78,7 +78,7 @@ class TestXOR(object):
         model = Network(genome)
         key = jax.random.PRNGKey(0)
 
-        params = model.init()
+        params, static_params = model.init()
         tx = optax.adam(config.learning_rate)
         opt_state = tx.init(params)
 
@@ -86,7 +86,7 @@ class TestXOR(object):
         test_task = XOR(batch_size=config.batch_size, dataset_size=config.dataset_size, test=True)
 
         def model_loss_for_grad(model_params, obs_batch, labels_batch):
-            predictions = model.apply(model_params, obs_batch)
+            predictions = model.apply(model_params, static_params, obs_batch)
             return loss_fn(predictions, labels_batch)
 
         @jax.jit
@@ -110,7 +110,7 @@ class TestXOR(object):
                 test_state = test_task.reset(subkey_test)
 
                 # Get raw predictions (logits) from the model
-                test_logits = model.apply(params, test_state.obs)
+                test_logits = model.apply(params, static_params, test_state.obs)
                 # Calculate accuracy using logits
                 acc = accuracy(test_logits, test_state.labels)
 

@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import networkx as nx
 
-from neat.algo.genome import ActivationFunction, AggregationFunction, NEATGenome, NodeType
+from neat.algo.genome import ActivationFunction, AggregationFunction, ConnectionGene, NEATGenome, NodeGene, NodeType
 
 
 class Network:
@@ -54,22 +54,33 @@ class Network:
         all_nodes = input_nodes + hidden_nodes + output_nodes
         node_to_idx = {nid: idx for idx, nid in enumerate(all_nodes)}
 
-        # Build adjacency matrix
+        # Build weight matrix
         n_nodes = len(all_nodes)
-        adjacency = jnp.zeros((n_nodes, n_nodes))
+        weights = jnp.zeros((n_nodes, n_nodes))
 
         for in_node, out_node, weight in active_connections:
             if in_node in node_to_idx and out_node in node_to_idx:
                 i, j = node_to_idx[in_node], node_to_idx[out_node]
-                adjacency = adjacency.at[j, i].set(weight)  # j receives from i
+                weights = weights.at[j, i].set(weight)  # j receives from i
 
         # Extract node properties
         biases = jnp.array([getattr(self.genome.nodes[nid], "bias", 0.0) for nid in all_nodes])
         activations = [self.genome.nodes[nid].activation_function for nid in all_nodes]
 
+        # Create enabled mask
+        enabled_mask = jnp.zeros((n_nodes, n_nodes), dtype=bool)
+
+        # Set True for enabled connections
+        for conn in self.genome.connections.values():
+            if conn.enabled and conn.in_node_id in node_to_idx and conn.out_node_id in node_to_idx:
+                i = node_to_idx[conn.in_node_id]
+                j = node_to_idx[conn.out_node_id]
+                enabled_mask = enabled_mask.at[j, i].set(True)
+
         return {
-            "adjacency": adjacency,
+            "weights": weights,
             "biases": biases,
+            "enabled_mask": enabled_mask,
             "activations": activations,
             "input_indices": list(range(len(input_nodes))),
             "hidden_indices": list(range(len(input_nodes), len(input_nodes) + len(hidden_nodes))),
@@ -80,30 +91,24 @@ class Network:
         }
 
     def init(self) -> Dict:
-        return {"weights": self.compiled_network["adjacency"], "biases": self.compiled_network["biases"]}
+        differentiate_params = {
+            "weights": self.compiled_network["weights"],
+            "biases": self.compiled_network["biases"],
+        }
 
-    def _create_enabled_mask(self) -> jnp.ndarray:
-        """Create a boolean mask for enabled connections."""
-        compiled = self.compiled_network
-        n_nodes = compiled["n_nodes"]
-        mask = jnp.zeros((n_nodes, n_nodes), dtype=bool)
+        static_params = {
+            "enabled_mask": self.compiled_network["enabled_mask"],
+            "activations": self.compiled_network["activations"],
+            "input_indices": self.compiled_network["input_indices"],
+            "hidden_indices": self.compiled_network["hidden_indices"],
+            "output_indices": self.compiled_network["output_indices"],
+            "n_nodes": self.compiled_network["n_nodes"],
+        }
 
-        # Set True for enabled connections
-        for conn in self.genome.connections.values():
-            if (
-                conn.enabled
-                and conn.in_node_id in compiled["node_to_idx"]
-                and conn.out_node_id in compiled["node_to_idx"]
-            ):
-                i = compiled["node_to_idx"][conn.in_node_id]
-                j = compiled["node_to_idx"][conn.out_node_id]
-                mask = mask.at[j, i].set(True)
+        return differentiate_params, static_params
 
-        return mask
-
-    def apply(self, params: Dict, inputs: jnp.ndarray) -> jnp.ndarray:
+    def apply(self, diff_params: Dict, static_params: Dict, inputs: jnp.ndarray) -> jnp.ndarray:
         """Forward pass through the network."""
-        compiled = self.compiled_network
 
         # Handle batch dimension
         if inputs.ndim == 1:
@@ -113,23 +118,23 @@ class Network:
             squeeze_output = False
 
         batch_size = inputs.shape[0]
-        n_nodes = compiled["n_nodes"]
+        n_nodes = static_params["n_nodes"]
 
         # Initialize node activations
         activations = jnp.zeros((batch_size, n_nodes))
 
         # Set input values
-        input_indices = compiled["input_indices"]
+        input_indices = static_params["input_indices"]
         activations = activations.at[:, input_indices].set(inputs)
 
         # Process nodes in evaluation order (excluding inputs)
         # Use stop_gradient to prevent gradients through masked-out connections
-        enabled_mask = self._create_enabled_mask()
-        raw_weights = params["weights"]
+        enabled_mask = static_params["enabled_mask"]
+        raw_weights = diff_params["weights"]
         stop_gradient = jax.lax.stop_gradient(jnp.zeros_like(raw_weights))
 
         weights = jnp.where(enabled_mask, raw_weights, stop_gradient)
-        biases = params["biases"]
+        biases = diff_params["biases"]
 
         # For each non-input node, compute its activation
         for i in range(len(input_indices), n_nodes):
@@ -137,12 +142,12 @@ class Network:
             node_input = jnp.dot(activations, weights[i, :]) + biases[i]
 
             # Apply activation function
-            activation_fn = compiled["activations"][i]
+            activation_fn = static_params["activations"][i]
             activated = self._apply_activation(node_input, activation_fn)
             activations = activations.at[:, i].set(activated)
 
         # Extract outputs
-        output_indices = compiled["output_indices"]
+        output_indices = static_params["output_indices"]
         outputs = activations[:, output_indices]
 
         if squeeze_output:

@@ -53,13 +53,13 @@ class TestNetwork(object):
         inputs = jnp.array([[0.5, 0.5, 0.5]])
         targets = jnp.array([[1.0]])
 
-        params = network.init()
+        params, static_params = network.init()
 
         def loss_fn(predictions, targets):
             return jnp.mean((predictions - targets) ** 2)
 
         def model_loss_for_grad(model_params, obs_batch, labels_batch):
-            predictions = network.apply(model_params, obs_batch)
+            predictions = network.apply(model_params, static_params, obs_batch)
             return loss_fn(predictions, labels_batch)
 
         grads = jax.grad(model_loss_for_grad)(params, inputs, targets)
@@ -90,7 +90,7 @@ class TestNetwork(object):
         inputs = jnp.array([[0.5, 0.5, 0.5]])
         targets = jnp.array([[1.0]])
 
-        params = network.init()
+        params, static_params = network.init()
         tx = optax.adam(learning_rate=0.01)
         opt_state = tx.init(params)
 
@@ -98,7 +98,7 @@ class TestNetwork(object):
             return jnp.mean((predictions - targets) ** 2)
 
         def model_loss_for_grad(model_params, obs_batch, labels_batch):
-            predictions = network.apply(model_params, obs_batch)
+            predictions = network.apply(model_params, static_params, obs_batch)
             return loss_fn(predictions, labels_batch)
 
         @jax.jit
