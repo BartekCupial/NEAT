@@ -3,24 +3,21 @@ from typing import Any, Dict, List, Tuple
 import jax
 import jax.numpy as jnp
 import networkx as nx
+from evojax.policy.base import PolicyNetwork
 
 from neat.algo.genome import ActivationFunction, AggregationFunction, ConnectionGene, NEATGenome, NodeGene, NodeType
 
 
-class Network:
+class NEATPolicy(PolicyNetwork):
     """JAX-compatible NEAT network implementation."""
 
-    def __init__(self, genome: NEATGenome):
-        self.genome = genome
-        self.compiled_network = self.compile_network()
-
-    def compile_network(self) -> Dict:
+    def compile_genome(self, genome: NEATGenome) -> Dict:
         """Compile the genome into a format suitable for JAX computation."""
         # Build NetworkX graph for topological sorting
         graph = nx.DiGraph()
 
         # Add nodes
-        for node_id, node in self.genome.nodes.items():
+        for node_id, node in genome.nodes.items():
             graph.add_node(
                 node_id,
                 **{
@@ -33,7 +30,7 @@ class Network:
 
         # Add edges (connections)
         active_connections = []
-        for conn in self.genome.connections.values():
+        for conn in genome.connections.values():
             if conn.enabled:
                 graph.add_edge(conn.in_node_id, conn.out_node_id, weight=conn.weight)
                 active_connections.append((conn.in_node_id, conn.out_node_id, conn.weight))
@@ -43,12 +40,12 @@ class Network:
             eval_order = list(nx.topological_sort(graph))
         except nx.NetworkXError:
             # Handle cycles by using a simple ordering
-            eval_order = sorted(self.genome.nodes.keys())
+            eval_order = sorted(genome.nodes.keys())
 
         # Separate nodes by type
-        input_nodes = [nid for nid in eval_order if self.genome.nodes[nid].node_type == NodeType.INPUT]
-        hidden_nodes = [nid for nid in eval_order if self.genome.nodes[nid].node_type == NodeType.HIDDEN]
-        output_nodes = [nid for nid in eval_order if self.genome.nodes[nid].node_type == NodeType.OUTPUT]
+        input_nodes = [nid for nid in eval_order if genome.nodes[nid].node_type == NodeType.INPUT]
+        hidden_nodes = [nid for nid in eval_order if genome.nodes[nid].node_type == NodeType.HIDDEN]
+        output_nodes = [nid for nid in eval_order if genome.nodes[nid].node_type == NodeType.OUTPUT]
 
         # Create connection matrices for efficient computation
         all_nodes = input_nodes + hidden_nodes + output_nodes
@@ -64,22 +61,25 @@ class Network:
                 weights = weights.at[j, i].set(weight)  # j receives from i
 
         # Extract node properties
-        biases = jnp.array([getattr(self.genome.nodes[nid], "bias", 0.0) for nid in all_nodes])
-        activations = [self.genome.nodes[nid].activation_function for nid in all_nodes]
+        biases = jnp.array([getattr(genome.nodes[nid], "bias", 0.0) for nid in all_nodes])
+        activations = [genome.nodes[nid].activation_function for nid in all_nodes]
 
         # Create enabled mask
         enabled_mask = jnp.zeros((n_nodes, n_nodes), dtype=bool)
 
         # Set True for enabled connections
-        for conn in self.genome.connections.values():
+        for conn in genome.connections.values():
             if conn.enabled and conn.in_node_id in node_to_idx and conn.out_node_id in node_to_idx:
                 i = node_to_idx[conn.in_node_id]
                 j = node_to_idx[conn.out_node_id]
                 enabled_mask = enabled_mask.at[j, i].set(True)
 
-        return {
+        differentiate_params = {
             "weights": weights,
             "biases": biases,
+        }
+
+        static_params = {
             "enabled_mask": enabled_mask,
             "activations": activations,
             "input_indices": list(range(len(input_nodes))),
@@ -88,21 +88,6 @@ class Network:
             "eval_order": eval_order,
             "node_to_idx": node_to_idx,
             "n_nodes": n_nodes,
-        }
-
-    def init(self) -> Dict:
-        differentiate_params = {
-            "weights": self.compiled_network["weights"],
-            "biases": self.compiled_network["biases"],
-        }
-
-        static_params = {
-            "enabled_mask": self.compiled_network["enabled_mask"],
-            "activations": self.compiled_network["activations"],
-            "input_indices": self.compiled_network["input_indices"],
-            "hidden_indices": self.compiled_network["hidden_indices"],
-            "output_indices": self.compiled_network["output_indices"],
-            "n_nodes": self.compiled_network["n_nodes"],
         }
 
         return differentiate_params, static_params
@@ -167,3 +152,6 @@ class Network:
             return x
         else:
             return x
+
+    def get_actions(self, t_states, params, p_states):
+        return 0

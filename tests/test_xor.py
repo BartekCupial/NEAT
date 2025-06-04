@@ -6,7 +6,7 @@ import optax
 import pytest
 
 from neat.algo.genome import ActivationFunction, ConnectionGene, NEATGenome, NodeGene, NodeType
-from neat.algo.network import Network
+from neat.policy import NEATPolicy
 from neat.task import XOR
 
 
@@ -75,10 +75,10 @@ class TestXOR(object):
         )
 
         # Initialize model and optimizer
-        model = Network(genome)
-        key = jax.random.PRNGKey(0)
+        model = NEATPolicy()
+        params, static_params = model.compile_genome(genome)
 
-        params, static_params = model.init()
+        key = jax.random.PRNGKey(0)
         tx = optax.adam(config.learning_rate)
         opt_state = tx.init(params)
 

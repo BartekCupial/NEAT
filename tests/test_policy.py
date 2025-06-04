@@ -4,10 +4,10 @@ import optax
 import pytest
 
 from neat.algo.genome import ConnectionGene, NEATGenome, NodeGene, NodeType
-from neat.algo.network import Network
+from neat.policy import NEATPolicy
 
 
-class TestNetwork(object):
+class TestPolicy(object):
     @pytest.fixture
     def genome(self):
         """Create first parent genome for crossover tests."""
@@ -32,34 +32,34 @@ class TestNetwork(object):
             fitness=0.1,
         )
 
-    def test_compile_network(self, genome: NEATGenome):
-        """Test the network compilation."""
-        network = Network(genome)
-        network.compile_network()
+    def test_compile_policy(self, genome: NEATGenome):
+        """Test the policy compilation."""
+        policy = NEATPolicy()
+        policy.compile_genome(genome)
 
     def test_forward_pass(self, genome: NEATGenome):
-        """Test the forward pass through the network."""
-        network = Network(genome)
+        """Test the forward pass through the policy."""
+        policy = NEATPolicy()
+        params, static_params = policy.compile_genome(genome)
         inputs = jnp.array([[0.5, 0.5, 0.5]])
 
-        params = network.init()
-        outputs = network.apply(params, inputs)
+        outputs = policy.apply(params, static_params, inputs)
 
         assert jnp.all(outputs == 0.75)
 
     def test_gradients(self, genome: NEATGenome):
-        """Test the gradients of the network."""
-        network = Network(genome)
+        """Test the gradients of the policy."""
+        policy = NEATPolicy()
+        params, static_params = policy.compile_genome(genome)
+
         inputs = jnp.array([[0.5, 0.5, 0.5]])
         targets = jnp.array([[1.0]])
-
-        params, static_params = network.init()
 
         def loss_fn(predictions, targets):
             return jnp.mean((predictions - targets) ** 2)
 
         def model_loss_for_grad(model_params, obs_batch, labels_batch):
-            predictions = network.apply(model_params, static_params, obs_batch)
+            predictions = policy.apply(model_params, static_params, obs_batch)
             return loss_fn(predictions, labels_batch)
 
         grads = jax.grad(model_loss_for_grad)(params, inputs, targets)
@@ -85,12 +85,12 @@ class TestNetwork(object):
         assert grads["weights"][4, 1] == 0.0  # w(2→4) should not change since it's disabled
 
     def test_train(self, genome: NEATGenome):
-        """Test the training process of the network."""
-        network = Network(genome)
+        """Test the training process of the policy."""
+        policy = NEATPolicy()
+        params, static_params = policy.compile_genome(genome)
         inputs = jnp.array([[0.5, 0.5, 0.5]])
         targets = jnp.array([[1.0]])
 
-        params, static_params = network.init()
         tx = optax.adam(learning_rate=0.01)
         opt_state = tx.init(params)
 
@@ -98,7 +98,7 @@ class TestNetwork(object):
             return jnp.mean((predictions - targets) ** 2)
 
         def model_loss_for_grad(model_params, obs_batch, labels_batch):
-            predictions = network.apply(model_params, static_params, obs_batch)
+            predictions = policy.apply(model_params, static_params, obs_batch)
             return loss_fn(predictions, labels_batch)
 
         @jax.jit
