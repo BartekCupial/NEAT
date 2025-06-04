@@ -1,11 +1,6 @@
-import enum
 import logging
-import random
-import sys
-from abc import ABC, abstractmethod
 from copy import deepcopy
-from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -14,80 +9,16 @@ import numpy as np
 from evojax.algo.base import NEAlgorithm
 from evojax.util import create_logger
 
-
-class NodeType(enum.Enum):
-    INPUT = "input"
-    HIDDEN = "hidden"
-    OUTPUT = "output"
-
-
-class ActivationFunction(enum.Enum):
-    SIGMOID = "sigmoid"
-    TANH = "tanh"
-    RELU = "relu"
-    SOFTMAX = "softmax"
-
-
-class AggregationFunction(enum.Enum):
-    SUM = "sum"
-    MEAN = "mean"
-    MAX = "max"
-    MIN = "min"
-    PRODUCT = "product"
-
-
-@dataclass
-class NodeGene:
-    id: int
-    node_type: NodeType
-    activation_function: ActivationFunction = ActivationFunction.RELU
-    aggregation_function: AggregationFunction = AggregationFunction.SUM
-
-    def __str__(self):
-        return f"NodeGene(id={self.id}, type='{self.node_type}', activation='{self.activation_function}', aggregation='{self.aggregation_function}')"
-
-
-@dataclass
-class ConnectionGene:
-    in_node_id: int
-    out_node_id: int
-    weight: float
-    enabled: bool
-
-    def __str__(self):
-        return (
-            f"ConnectionGene(key=({self.in_node_id} -> {self.out_node_id}), "
-            f"weight={self.weight:.4f}, enabled={self.enabled}"
-        )
-
-
-@dataclass
-class NEATGenome:
-    """NEAT genome structure."""
-
-    nodes: Dict[int, NodeGene]
-    connections: Dict[int, ConnectionGene]
-    fitness: float = 0.0
-
-    def __str__(self):
-        connections_str = ", ".join(
-            f"{innovation_number} ({conn.in_node_id}->{conn.out_node_id})"
-            for innovation_number, conn in self.connections.items()
-        )
-        return f"NEATGenome({connections_str})"
-
-
-@dataclass
-class NEATState:
-    """State for NEAT algorithm."""
-
-    population: List[NEATGenome]
-    species: List[List[int]]  # List of species, each containing genome indices
-    innovation_counter: int
-    node_counter: int
-    generation: int
-    best_fitness: float
-    stagnation_counters: List[int]
+from neat.algo.genome import (
+    ActivationFunction,
+    AggregationFunction,
+    ConnectionGene,
+    NEATGenome,
+    NEATState,
+    NodeGene,
+    NodeType,
+)
+from neat.algo.network import Network
 
 
 class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
@@ -518,25 +449,11 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
         self.neat_state.generation += 1
 
-    def _genome_to_params(self, genome: NEATGenome) -> jnp.ndarray:
-        """Convert genome to parameter vector for neural network evaluation."""
-        # TODO:
-        pass
-
     @property
-    def best_params(self) -> jnp.ndarray:  # The "best" in NEAT is more complex than a single param vector
-        # Could be the genome with the highest raw fitness, or from the best species.
-        # return self.neat_state.best_genome_representation
-        # TODO:
-        pass
+    def best_params(self) -> jnp.ndarray:
+        best_genome = max(self.neat_state.population, key=lambda genome: genome.fitness)
 
-    @best_params.setter
-    def best_params(self, params: Union[np.ndarray, jnp.ndarray]) -> None:
-        # This setter would typically not be used in NEAT as the best genome is determined by evolution.
-        # However, if you want to set a specific genome as the best (e.g., for logging or analysis):
-        # self.neat_state.best_genome_representation = params
-        # TODO:
-        pass
+        return Network(best_genome)
 
 
 class CustomPopulationNEAT(NEAT):
