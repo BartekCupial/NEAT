@@ -62,7 +62,7 @@ class NEATPolicy(PolicyNetwork):
 
         # Extract node properties
         biases = jnp.array([getattr(genome.nodes[nid], "bias", 0.0) for nid in all_nodes])
-        activations = [genome.nodes[nid].activation_function for nid in all_nodes]
+        activations = [genome.nodes[nid].activation_function.value for nid in all_nodes]
 
         # Create enabled mask
         enabled_mask = jnp.zeros((n_nodes, n_nodes), dtype=bool)
@@ -142,16 +142,38 @@ class NEATPolicy(PolicyNetwork):
 
     def _apply_activation(self, x: jnp.ndarray, activation_fn: ActivationFunction) -> jnp.ndarray:
         """Apply activation function."""
-        if activation_fn == ActivationFunction.SIGMOID:
+        if activation_fn == ActivationFunction.SIGMOID.value:
             return jax.nn.sigmoid(x)
-        elif activation_fn == ActivationFunction.TANH:
+        elif activation_fn == ActivationFunction.TANH.value:
             return jax.nn.tanh(x)
-        elif activation_fn == ActivationFunction.RELU:
+        elif activation_fn == ActivationFunction.RELU.value:
             return jax.nn.relu(x)
-        elif activation_fn == ActivationFunction.IDENTITY:
+        elif activation_fn == ActivationFunction.IDENTITY.value:
             return x
         else:
             return x
 
     def get_actions(self, t_states, params, p_states):
-        return 0
+        """Get actions for a batch of genomes using vectorized computation.
+
+        Args:
+            t_states: Task states containing observations
+            params: List of compiled genomes (each with diff_params and static_params)
+            p_states: Policy states (ignored for NEAT)
+
+            Returns:
+            actions: Vectorized actions from all genomes
+            p_states: Unchanged policy states
+        """
+
+        # Extract observations from task states
+        observations = t_states.obs
+
+        # TODO: use vmap when params become vectorizable
+        actions = []
+        for i, (diff_params, static_params) in enumerate(params):
+            action = self.apply(diff_params, static_params, observations[i])
+            actions.append(action)
+        actions = jnp.stack(actions, axis=0)
+
+        return actions, p_states
