@@ -14,6 +14,7 @@ class ActivationFunction(enum.Enum):
     TANH = "tanh"
     RELU = "relu"
     SOFTMAX = "softmax"
+    IDENTITY = "identity"
 
 
 class AggregationFunction(enum.Enum):
@@ -28,7 +29,7 @@ class AggregationFunction(enum.Enum):
 class NodeGene:
     id: int
     node_type: NodeType
-    activation_function: ActivationFunction = ActivationFunction.RELU
+    activation_function: ActivationFunction = ActivationFunction.IDENTITY
     aggregation_function: AggregationFunction = AggregationFunction.SUM
 
     def __str__(self):

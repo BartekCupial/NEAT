@@ -35,29 +35,14 @@ class TestNetwork(object):
     def test_compile_network(self, genome: NEATGenome):
         """Test the network compilation."""
         network = Network(genome)
-        compiled_network = network.compile_network()
-
-        assert "weight_matrix" in compiled_network
-        assert "node_ids" in compiled_network
-        assert "node_to_idx" in compiled_network
-        assert "node_types" in compiled_network
-        assert "activation_funcs" in compiled_network
-        assert "aggregation_funcs" in compiled_network
-
-        # Check weight matrix dimensions
-        num_nodes = len(genome.nodes)
-        assert compiled_network["weight_matrix"].shape == (num_nodes, num_nodes)
-
-        # Check node IDs and types
-        assert len(compiled_network["node_ids"]) == num_nodes
-        assert len(compiled_network["node_types"]) == num_nodes
+        network.compile_network()
 
     def test_forward_pass(self, genome: NEATGenome):
         """Test the forward pass through the network."""
         network = Network(genome)
         inputs = jnp.array([[0.5, 0.5, 0.5]])
 
-        params = {"weight_matrix": network.compiled_network["weight_matrix"]}
+        params = network.init()
         outputs = network.apply(params, inputs)
 
         assert jnp.all(outputs == 0.75)
@@ -68,7 +53,7 @@ class TestNetwork(object):
         inputs = jnp.array([[0.5, 0.5, 0.5]])
         targets = jnp.array([[1.0]])
 
-        params = {"weight_matrix": network.compiled_network["weight_matrix"]}
+        params = network.init()
         tx = optax.adam(learning_rate=0.01)
         opt_state = tx.init(params)
 

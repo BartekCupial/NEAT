@@ -14,6 +14,12 @@ class State(TaskState):
 
 
 def sample_batch(key: jnp.ndarray, data: jnp.ndarray, labels: jnp.ndarray, batch_size: int) -> Tuple:
+    # Ensure key has proper dimensionality
+    # if key.ndim == 0:
+    #     key = jnp.array([key, key])  # Convert scalar to proper key format
+    # elif key.ndim == 1 and key.shape[0] != 2:
+    #     key = jax.random.PRNGKey(int(key[0]))  # Regenerate proper key
+
     ix = random.choice(key=key, a=data.shape[0], shape=(batch_size,), replace=False)
     return (jnp.take(data, indices=ix, axis=0), jnp.take(labels, indices=ix, axis=0))
 
@@ -62,7 +68,8 @@ class XOR(VectorizedTask):
                 batch_data, batch_labels = sample_batch(key, self.train_data, self.train_labels, batch_size)
             return State(obs=batch_data, labels=batch_labels)
 
-        self._reset_fn = jax.jit(jax.vmap(reset_fn))
+        # self._reset_fn = jax.jit(jax.vmap(reset_fn))
+        self._reset_fn = jax.jit(reset_fn)
 
         def step_fn(state, action):
             if test:
@@ -71,7 +78,8 @@ class XOR(VectorizedTask):
                 reward = -loss_fn(action, state.labels)
             return state, reward, jnp.ones(())
 
-        self._step_fn = jax.jit(jax.vmap(step_fn))
+        # self._step_fn = jax.jit(jax.vmap(step_fn))
+        self._step_fn = jax.jit(step_fn)
 
     def reset(self, key: jnp.ndarray) -> State:
         return self._reset_fn(key)

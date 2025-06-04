@@ -1,106 +1,140 @@
-from typing import Dict
+from typing import Any, Dict, List, Tuple
 
 import jax
 import jax.numpy as jnp
+import networkx as nx
 
 from neat.algo.genome import ActivationFunction, AggregationFunction, NEATGenome, NodeType
 
 
 class Network:
-    """Base class for NEAT networks."""
+    """JAX-compatible NEAT network implementation."""
 
     def __init__(self, genome: NEATGenome):
         self.genome = genome
         self.compiled_network = self.compile_network()
 
     def compile_network(self) -> Dict:
-        """Pre-compile network structure for efficient forward passes."""
-        # Build adjacency information
-        node_ids = sorted(self.genome.nodes.keys())
-        node_to_idx = {node_id: idx for idx, node_id in enumerate(node_ids)}
+        """Compile the genome into a format suitable for JAX computation."""
+        # Build NetworkX graph for topological sorting
+        graph = nx.DiGraph()
 
-        # Create connection matrix
-        num_nodes = len(node_ids)
-        weight_matrix = jnp.zeros((num_nodes, num_nodes))
+        # Add nodes
+        for node_id, node in self.genome.nodes.items():
+            graph.add_node(
+                node_id,
+                **{
+                    "type": node.node_type,
+                    "activation": node.activation_function,
+                    "aggregation": node.aggregation_function,
+                    "bias": getattr(node, "bias", 0.0),
+                },
+            )
 
+        # Add edges (connections)
+        active_connections = []
         for conn in self.genome.connections.values():
             if conn.enabled:
-                in_idx = node_to_idx[conn.in_node_id]
-                out_idx = node_to_idx[conn.out_node_id]
-                weight_matrix = weight_matrix.at[out_idx, in_idx].set(conn.weight)
+                graph.add_edge(conn.in_node_id, conn.out_node_id, weight=conn.weight)
+                active_connections.append((conn.in_node_id, conn.out_node_id, conn.weight))
 
-        # Get node types and functions
-        node_types = [self.genome.nodes[node_id].node_type for node_id in node_ids]
-        activation_funcs = [self.genome.nodes[node_id].activation_function for node_id in node_ids]
-        aggregation_funcs = [self.genome.nodes[node_id].aggregation_function for node_id in node_ids]
+        # Get topological order for evaluation
+        try:
+            eval_order = list(nx.topological_sort(graph))
+        except nx.NetworkXError:
+            # Handle cycles by using a simple ordering
+            eval_order = sorted(self.genome.nodes.keys())
+
+        # Separate nodes by type
+        input_nodes = [nid for nid in eval_order if self.genome.nodes[nid].node_type == NodeType.INPUT]
+        hidden_nodes = [nid for nid in eval_order if self.genome.nodes[nid].node_type == NodeType.HIDDEN]
+        output_nodes = [nid for nid in eval_order if self.genome.nodes[nid].node_type == NodeType.OUTPUT]
+
+        # Create connection matrices for efficient computation
+        all_nodes = input_nodes + hidden_nodes + output_nodes
+        node_to_idx = {nid: idx for idx, nid in enumerate(all_nodes)}
+
+        # Build adjacency matrix
+        n_nodes = len(all_nodes)
+        adjacency = jnp.zeros((n_nodes, n_nodes))
+
+        for in_node, out_node, weight in active_connections:
+            if in_node in node_to_idx and out_node in node_to_idx:
+                i, j = node_to_idx[in_node], node_to_idx[out_node]
+                adjacency = adjacency.at[j, i].set(weight)  # j receives from i
+
+        # Extract node properties
+        biases = jnp.array([getattr(self.genome.nodes[nid], "bias", 0.0) for nid in all_nodes])
+        activations = [self.genome.nodes[nid].activation_function for nid in all_nodes]
 
         return {
-            "weight_matrix": weight_matrix,
-            "node_ids": node_ids,
+            "adjacency": adjacency,
+            "biases": biases,
+            "activations": activations,
+            "input_indices": list(range(len(input_nodes))),
+            "hidden_indices": list(range(len(input_nodes), len(input_nodes) + len(hidden_nodes))),
+            "output_indices": list(range(len(input_nodes) + len(hidden_nodes), n_nodes)),
+            "eval_order": eval_order,
             "node_to_idx": node_to_idx,
-            "node_types": node_types,
-            "activation_funcs": activation_funcs,
-            "aggregation_funcs": aggregation_funcs,
+            "n_nodes": n_nodes,
         }
 
+    def init(self) -> Dict:
+        return {"weights": self.compiled_network["adjacency"], "biases": self.compiled_network["biases"]}
+
     def apply(self, params: Dict, inputs: jnp.ndarray) -> jnp.ndarray:
-        """Apply the network with given parameters (for training)."""
+        """Forward pass through the network."""
+        compiled = self.compiled_network
+
+        # Handle batch dimension
         if inputs.ndim == 1:
-            inputs = inputs.reshape(1, -1)
+            inputs = inputs[None, :]  # Add batch dimension
             squeeze_output = True
         else:
             squeeze_output = False
 
         batch_size = inputs.shape[0]
-        num_nodes = len(self.compiled_network["node_ids"])
+        n_nodes = compiled["n_nodes"]
 
-        # Initialize activations
-        activations = jnp.zeros((batch_size, num_nodes))
+        # Initialize node activations
+        activations = jnp.zeros((batch_size, n_nodes))
 
-        # Set input activations
-        input_indices = [
-            i for i, node_type in enumerate(self.compiled_network["node_types"]) if node_type == NodeType.INPUT
-        ]
+        # Set input values
+        input_indices = compiled["input_indices"]
+        activations = activations.at[:, input_indices].set(inputs)
 
-        for i, idx in enumerate(input_indices):
-            if i < inputs.shape[1]:
-                activations = activations.at[:, idx].set(inputs[:, i])
+        # Process nodes in evaluation order (excluding inputs)
+        weights = params["weights"]
+        biases = params["biases"]
 
-        # Use trainable weight matrix from params
-        weight_matrix = params["weight_matrix"]
+        # For each non-input node, compute its activation
+        for i in range(len(input_indices), n_nodes):
+            # Aggregate inputs from all connected nodes
+            node_input = jnp.dot(activations, weights[i, :]) + biases[i]
 
-        # Forward propagation (multiple passes to handle recurrence)
-        for _ in range(num_nodes):  # Maximum depth
-            # Compute weighted inputs for all nodes
-            weighted_inputs = jnp.dot(activations, weight_matrix.T)
-
-            # Update non-input nodes
-            for i, (node_type, act_func) in enumerate(
-                zip(self.compiled_network["node_types"], self.compiled_network["activation_funcs"])
-            ):
-                if node_type != NodeType.INPUT:
-                    # Apply activation function
-                    if act_func == ActivationFunction.SIGMOID:
-                        new_activation = jax.nn.sigmoid(weighted_inputs[:, i])
-                    elif act_func == ActivationFunction.TANH:
-                        new_activation = jnp.tanh(weighted_inputs[:, i])
-                    elif act_func == ActivationFunction.RELU:
-                        new_activation = jax.nn.relu(weighted_inputs[:, i])
-                    elif act_func == ActivationFunction.SOFTMAX:
-                        new_activation = jax.nn.softmax(weighted_inputs[:, i])
-                    else:
-                        new_activation = jax.nn.relu(weighted_inputs[:, i])
-
-                    activations = activations.at[:, i].set(new_activation)
+            # Apply activation function
+            activation_fn = compiled["activations"][i]
+            activated = self._apply_activation(node_input, activation_fn)
+            activations = activations.at[:, i].set(activated)
 
         # Extract outputs
-        output_indices = [
-            i for i, node_type in enumerate(self.compiled_network["node_types"]) if node_type == NodeType.OUTPUT
-        ]
-
+        output_indices = compiled["output_indices"]
         outputs = activations[:, output_indices]
 
         if squeeze_output:
             outputs = outputs.squeeze(0)
 
         return outputs
+
+    def _apply_activation(self, x: jnp.ndarray, activation_fn: ActivationFunction) -> jnp.ndarray:
+        """Apply activation function."""
+        if activation_fn == ActivationFunction.SIGMOID:
+            return jax.nn.sigmoid(x)
+        elif activation_fn == ActivationFunction.TANH:
+            return jax.nn.tanh(x)
+        elif activation_fn == ActivationFunction.RELU:
+            return jax.nn.relu(x)
+        elif activation_fn == ActivationFunction.IDENTITY:
+            return x
+        else:
+            return x
