@@ -2,7 +2,7 @@ import copy
 import logging
 import time
 from functools import partial
-from typing import Tuple
+from typing import Dict, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -12,6 +12,7 @@ from evojax.policy.base import PolicyNetwork, PolicyState
 from evojax.sim_mgr import (
     all_done,
     create_logger,
+    duplicate_params,
     get_task_reset_keys,
     merge_state_from_pmap,
     report_score,
@@ -25,19 +26,13 @@ from evojax.task.base import TaskState, VectorizedTask
 from jax import random
 
 
-def monkey_duplicate_params(params, repeats: int, ma_training: bool):
+def monkey_duplicate_params(params: Tuple[Dict, Dict], repeats: int, ma_training: bool):
     """Enhanced duplicate_params that handles both arrays and dictionaries."""
+    diff_params, static_params = params
+    diff_params = {key: duplicate_params(value, repeats, ma_training) for key, value in diff_params.items()}
+    static_params = {key: duplicate_params(value, repeats, ma_training) for key, value in static_params.items()}
 
-    # Handle non vectorized parameters (special NEAT case)
-    if isinstance(params, list):
-        return [p for i in range(repeats) for p in params]
-
-    # Handle regular JAX arrays (original behavior)
-    else:
-        if ma_training:
-            return jnp.tile(params, (repeats,) + (1,) * (params.ndim - 1))
-        else:
-            return jnp.repeat(params, repeats=repeats, axis=0)
+    return diff_params, static_params
 
 
 class BackpropSimManager(object):
@@ -151,8 +146,8 @@ class BackpropSimManager(object):
             )
 
         def rollout(task_states, policy_states, params, obs_params, step_once_fn, max_steps):
-            accumulated_rewards = jnp.zeros(len(params))
-            valid_masks = jnp.ones(len(params))
+            accumulated_rewards = jnp.zeros(params[0]["weights"].shape[0])
+            valid_masks = jnp.ones(params[0]["weights"].shape[0])
             (
                 (task_states, policy_states, params, obs_params, accumulated_rewards, valid_masks),
                 (obs_set, obs_mask),

@@ -3,26 +3,26 @@ from dataclasses import dataclass
 from typing import Dict, List
 
 
-class NodeType(enum.Enum):
-    INPUT = "input"
-    HIDDEN = "hidden"
-    OUTPUT = "output"
+class NodeType(enum.IntEnum):
+    INPUT = 0
+    HIDDEN = 1
+    OUTPUT = 2
 
 
-class ActivationFunction(enum.Enum):
-    SIGMOID = "sigmoid"
-    TANH = "tanh"
-    RELU = "relu"
-    SOFTMAX = "softmax"
-    IDENTITY = "identity"
+class ActivationFunction(enum.IntEnum):
+    SIGMOID = 0
+    TANH = 1
+    RELU = 2
+    SOFTMAX = 3
+    IDENTITY = 4
 
 
-class AggregationFunction(enum.Enum):
-    SUM = "sum"
-    MEAN = "mean"
-    MAX = "max"
-    MIN = "min"
-    PRODUCT = "product"
+class AggregationFunction(enum.IntEnum):
+    SUM = 0
+    MEAN = 1
+    MAX = 2
+    MIN = 3
+    PRODUCT = 4
 
 
 @dataclass

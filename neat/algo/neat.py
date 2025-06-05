@@ -18,7 +18,7 @@ from neat.algo.genome import (
     NodeGene,
     NodeType,
 )
-from neat.algo.network import Network
+from neat.policy import NEATPolicy
 
 
 class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
@@ -86,6 +86,7 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
         # Initialize innovation tracking
         self.global_innovations = {}  # Maps (in_node, out_node) -> innovation_number
+        self.policy = NEATPolicy()
 
         # Initialize population
         self._initialize_population()
@@ -197,6 +198,25 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         distance = self.c1 * len(excess) / N + self.c2 * len(disjoint) / N + self.c3 * weight_diff
 
         return distance
+
+    def _update_stagnation_counters(self):
+        """Update stagnation counters for each species."""
+        for i, species_indices in enumerate(self.neat_state.species):
+            if not species_indices:
+                continue
+
+            # Find best fitness in this species
+            species_best = max(self.neat_state.population[idx].fitness for idx in species_indices)
+
+            # Check if this species improved
+            if i < len(self.neat_state.stagnation_counters):
+                if species_best > self.neat_state.best_fitness:
+                    self.neat_state.stagnation_counters[i] = 0
+                else:
+                    self.neat_state.stagnation_counters[i] += 1
+            else:
+                # New species
+                self.neat_state.stagnation_counters.append(0)
 
     def _speciate_population(self):
         """
@@ -371,8 +391,123 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
         return NEATGenome(nodes=new_nodes, connections=new_connections)
 
+    def _remove_stagnant_species(self):
+        """Remove species that have stagnated for too long."""
+        active_species = []
+        active_stagnation = []
+
+        for i, (species_indices, stagnation) in enumerate(
+            zip(self.neat_state.species, self.neat_state.stagnation_counters)
+        ):
+            if stagnation < self.max_stagnation or len(self.neat_state.species) <= 2:
+                active_species.append(species_indices)
+                active_stagnation.append(stagnation)
+
+        self.neat_state.species = active_species
+        self.neat_state.stagnation_counters = active_stagnation
+
+    def _calculate_adjusted_fitness(self):
+        """Calculate adjusted fitness for each genome based on species sharing."""
+        for species_indices in self.neat_state.species:
+            species_size = len(species_indices)
+            for idx in species_indices:
+                genome = self.neat_state.population[idx]
+                genome.adjusted_fitness = genome.fitness / species_size
+
+    def _reproduce_species(self) -> List[NEATGenome]:
+        """Reproduce each species to create the next generation."""
+        self.rand_key, key = jax.random.split(self.rand_key)
+
+        new_population = []
+
+        # Calculate total adjusted fitness
+        total_adjusted_fitness = sum(
+            sum(self.neat_state.population[idx].adjusted_fitness for idx in species_indices)
+            for species_indices in self.neat_state.species
+        )
+
+        for species_indices in self.neat_state.species:
+            if not species_indices:
+                continue
+
+            # Calculate species fitness share
+            species_fitness = sum(self.neat_state.population[idx].adjusted_fitness for idx in species_indices)
+
+            # Determine number of offspring for this species
+            if total_adjusted_fitness > 0:
+                offspring_count = int((species_fitness / total_adjusted_fitness) * self.pop_size)
+            else:
+                offspring_count = len(species_indices)
+
+            # Ensure at least one offspring if species exists
+            offspring_count = max(1, offspring_count)
+
+            # Sort species by fitness
+            species_genomes = [(idx, self.neat_state.population[idx]) for idx in species_indices]
+            species_genomes.sort(key=lambda x: x[1].fitness, reverse=True)
+
+            # Elite selection
+            elite_count = min(self.elitism, len(species_genomes))
+            for i in range(elite_count):
+                if len(new_population) < self.pop_size:
+                    new_population.append(deepcopy(species_genomes[i][1]))
+
+            # Reproduce remaining offspring
+            survival_count = max(1, int(len(species_genomes) * self.survival_threshold))
+            breeding_pool = [genome for _, genome in species_genomes[:survival_count]]
+
+            while len(new_population) < self.pop_size and len(new_population) - elite_count < offspring_count:
+                key, subkey = jax.random.split(key)
+
+                if len(breeding_pool) == 1:
+                    # Asexual reproduction
+                    parent = breeding_pool[0]
+                    offspring = self._mutate_genome(deepcopy(parent))
+                else:
+                    # Sexual reproduction
+                    parent1_idx = int(jax.random.uniform(subkey) * len(breeding_pool))
+                    parent2_idx = int(jax.random.uniform(subkey) * len(breeding_pool))
+
+                    parent1 = breeding_pool[parent1_idx]
+                    parent2 = breeding_pool[parent2_idx]
+
+                    offspring = self._crossover(parent1, parent2)
+                    offspring = self._mutate_genome(offspring)
+
+                offspring.fitness = 0.0
+                new_population.append(offspring)
+
+        # Fill remaining slots if needed
+        while len(new_population) < self.pop_size:
+            key, subkey = jax.random.split(key)
+            # Add random genome from current population
+            idx = int(jax.random.uniform(subkey) * len(self.neat_state.population))
+            genome_copy = deepcopy(self.neat_state.population[idx])
+            genome_copy = self._mutate_genome(genome_copy)
+            genome_copy.fitness = 0.0
+            new_population.append(genome_copy)
+
+        return new_population[: self.pop_size]
+
     def _evolve_population(self):
-        pass
+        """Complete evolution step."""
+        # Calculate adjusted fitness
+        self._calculate_adjusted_fitness()
+
+        # Remove stagnant species
+        self._remove_stagnant_species()
+
+        # Reproduce species
+        new_population = self._reproduce_species()
+
+        # Update population
+        self.neat_state.population = new_population
+
+        # Update generation counter
+        self.neat_state.generation += 1
+
+        # Re-speciate the new population
+        self._speciate_population()
 
     def _crossover(self, parent1: NEATGenome, parent2: NEATGenome) -> NEATGenome:
         self.rand_key, init_key = jax.random.split(self.rand_key)
@@ -430,30 +565,30 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
     def ask(self) -> jnp.ndarray:
         """Return current population parameters."""
-        # Convert genomes to parameter arrays for evaluation
-        # TODO:
-        pass
+        return self.policy.compile_population(self.neat_state.population)
 
     def tell(self, fitness: jnp.ndarray) -> None:
-        # 1. Receive fitness scores for the current population.
-        # 2. Perform speciation:
-        # 3. Update species statistics (e.g., average fitness, stagnation counters).
-        # 4. Store the best individuals/species.
-        # 5. Update the overall NEAT state.
+        # Assign fitness scores
+        for genome, fit in zip(self.neat_state.population, fitness):
+            genome.fitness = fit
 
-        # Speciate population
-        self._speciate_population()
+        # Update best fitness
+        current_best = max(fitness)
+        if current_best > self.neat_state.best_fitness:
+            self.neat_state.best_fitness = current_best
 
         # Evolve population
         self._evolve_population()
 
-        self.neat_state.generation += 1
+        self.logger.info(
+            f"Generation {self.neat_state.generation}: "
+            f"Best fitness: {self.neat_state.best_fitness:.4f}, "
+            f"Species count: {len(self.neat_state.species)}"
+        )
 
     @property
     def best_params(self) -> jnp.ndarray:
-        best_genome = max(self.neat_state.population, key=lambda genome: genome.fitness)
-
-        return Network(best_genome)
+        return max(self.neat_state.population, key=lambda genome: genome.fitness)
 
 
 class CustomPopulationNEAT(NEAT):

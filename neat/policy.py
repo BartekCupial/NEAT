@@ -218,14 +218,14 @@ class NEATPolicy(PolicyNetwork):
     def get_actions(self, t_states, params, p_states):
         observations = t_states.obs
 
-        # Process each genome individually
-        actions = []
-        for i, (diff_params, static_params) in enumerate(params):
-            # This can return multiple outputs - shape depends on each genome
-            action = self.apply(diff_params, static_params, observations[i])
-            actions.append(action)
+        diff_params, static_params = params
 
-        # Stack the results - this works regardless of output count per genome
-        actions = jnp.stack(actions, axis=0)
+        def single_apply(inp, idx):
+            # Extract parameters for this specific genome
+            diff_p = {key: value[idx] for key, value in diff_params.items()}
+            static_p = {key: value[idx] for key, value in static_params.items()}
+            return self.apply(diff_p, static_p, inp)
+
+        actions = jax.vmap(single_apply, in_axes=(0, 0))(observations, jnp.arange(observations.shape[0]))
 
         return actions, p_states
