@@ -29,8 +29,25 @@ def loss_fn(prediction: jnp.ndarray, target: jnp.ndarray) -> jnp.float32:
     return jnp.mean(per_example_losses)
 
 
+def error_based_fitness(prediction: jnp.ndarray, target: jnp.ndarray) -> jnp.float32:
+    """Error-based fitness that provides continuous feedback."""
+    # Convert predictions to probabilities using sigmoid
+    probs = jax.nn.sigmoid(prediction.squeeze())
+
+    # Calculate mean squared error
+    mse = jnp.mean((probs - target) ** 2)
+
+    # Convert to fitness (higher is better)
+    # Maximum possible error is 1.0, so fitness ranges from 0 to 1
+    fitness = 1.0 - mse
+    return fitness
+
+
 def accuracy(prediction: jnp.ndarray, target: jnp.ndarray) -> jnp.float32:
-    predicted_class = jnp.argmax(prediction, axis=1)
+    probs = jax.nn.sigmoid(prediction.squeeze())
+    predicted_class = probs > 0.5  # Convert probabilities to binary predictions
+
+    # predicted_class = jnp.argmax(prediction, axis=1)
     return jnp.mean(predicted_class == target)
 
 
@@ -68,18 +85,18 @@ class XOR(VectorizedTask):
                 batch_data, batch_labels = sample_batch(key, self.train_data, self.train_labels, batch_size)
             return State(obs=batch_data, labels=batch_labels)
 
-        # self._reset_fn = jax.jit(jax.vmap(reset_fn))
-        self._reset_fn = jax.jit(reset_fn)
+        self._reset_fn = jax.jit(jax.vmap(reset_fn))
+        # self._reset_fn = jax.jit(reset_fn)
 
         def step_fn(state, action):
             if test:
                 reward = accuracy(action, state.labels)
             else:
-                reward = -loss_fn(action, state.labels)
+                reward = error_based_fitness(action, state.labels)
             return state, reward, jnp.ones(())
 
-        # self._step_fn = jax.jit(jax.vmap(step_fn))
-        self._step_fn = jax.jit(step_fn)
+        self._step_fn = jax.jit(jax.vmap(step_fn))
+        # self._step_fn = jax.jit(step_fn)
 
     def reset(self, key: jnp.ndarray) -> State:
         return self._reset_fn(key)
