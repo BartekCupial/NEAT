@@ -67,13 +67,22 @@ class NEATGenome:
 
 
 @dataclass
+class NEATSpecies:
+    """NEAT species structure."""
+
+    id: int
+    species_indices: List[int]
+    best_fitness: float = float("-inf")
+    stagnation_counter: int = 0
+
+
+@dataclass
 class NEATState:
     """State for NEAT algorithm."""
 
     population: List[NEATGenome]
-    species: List[List[int]]  # List of species, each containing genome indices
+    species: Dict[int, NEATSpecies]
+    species_counter: int
     innovation_counter: int
     node_counter: int
     generation: int
-    best_fitness: float
-    stagnation_counters: List[int]
