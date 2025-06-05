@@ -34,8 +34,8 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         c1: float = 1.0,  # Excess genes coefficient
         c2: float = 1.0,  # Disjoint genes coefficient
         c3: float = 0.4,  # Weight difference coefficient
-        prob_add_node: float = 0.1,
-        prob_add_connection: float = 0.1,
+        prob_add_node: float = 0.03,
+        prob_add_connection: float = 0.05,
         prob_replace_weights: float = 0.1,
         prob_perturb_weights: float = 0.8,
         max_stagnation: int = 15,
@@ -186,12 +186,23 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
     def _remove_stagnant_species(self):
         """Remove species that have stagnated for too long."""
-        for i in list(self.neat_state.species.keys()):
-            species = self.neat_state.species[i]
-
+        stagnant_species = []
+        for i, species in self.neat_state.species.items():
             if species.stagnation_counter >= self.max_stagnation:
-                self.logger.info(f"Removing stagnant species {i} with stagnation counter {species.stagnation_counter}.")
+                stagnant_species.append(i)
+
+        # Only remove stagnant species if we have more than one species
+        if len(self.neat_state.species) > len(stagnant_species):
+            for i in stagnant_species:
+                self.logger.info(f"Removing stagnant species {i}")
                 del self.neat_state.species[i]
+        else:
+            # Keep the best performing stagnant species
+            if stagnant_species:
+                best_species_id = max(stagnant_species, key=lambda x: self.neat_state.species[x].best_fitness)
+                stagnant_species.remove(best_species_id)
+                for i in stagnant_species:
+                    del self.neat_state.species[i]
 
     def _choose_species_representatives(self) -> List[NEATGenome]:
         """Select representatives for each species."""
@@ -557,8 +568,8 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         is compatible with the representative genome of that species."
         """
         new_species_indices = defaultdict(list)
+        unplaced_genomes = []
         for i, genome in enumerate(self.neat_state.population):
-            placed = False
 
             for spec_id, representative in species_representatives.items():
                 distance = self._calculate_compatibility_distance(genome, representative)
@@ -566,22 +577,23 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
                 if distance < self.compatibility_threshold:
                     # Place genome in this species
                     new_species_indices[spec_id].append(i)
-                    placed = True
                     break
+            else:
+                # If not placed in any species, add to unplaced genomes
+                unplaced_genomes.append(i)
 
+        for i in unplaced_genomes:
             # If not placed in any species, create a new species
-            if not placed:
-                self.neat_state.species_counter += 1
-                spec_id = self.neat_state.species_counter
-                new_species = NEATSpecies(
-                    id=spec_id,
-                    species_indices=[i],
-                    best_fitness=float("-inf"),
-                    stagnation_counter=0,
-                )
-                self.neat_state.species[spec_id] = new_species
-                new_species_indices[spec_id].append(i)
-                species_representatives[spec_id] = genome
+            self.neat_state.species_counter += 1
+            spec_id = self.neat_state.species_counter
+            new_species = NEATSpecies(
+                id=spec_id,
+                species_indices=[i],
+                best_fitness=float("-inf"),
+                stagnation_counter=0,
+            )
+            self.neat_state.species[spec_id] = new_species
+            new_species_indices[spec_id].append(i)
 
         for spec_id, indices in new_species_indices.items():
             self.neat_state.species[spec_id].species_indices = indices
