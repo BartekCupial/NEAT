@@ -5,121 +5,30 @@ import jax.numpy as jnp
 import optax
 import pytest
 
-from neat.algo.genome import ActivationFunction, ConnectionGene, NEATGenome, NodeGene, NodeType
+from neat.algo.genome import NEATGenome
 from neat.policy import NEATPolicy
 
 
 class TestPolicy(object):
-    @pytest.fixture
-    def genome(self):
-        """Create first parent genome for crossover tests."""
-        nodes = {
-            1: NodeGene(1, NodeType.INPUT),
-            2: NodeGene(2, NodeType.INPUT),
-            3: NodeGene(3, NodeType.INPUT),
-            4: NodeGene(4, NodeType.OUTPUT),
-            5: NodeGene(5, NodeType.HIDDEN),
-        }
-        connections = {
-            1: ConnectionGene(1, 4, 0.5, True),
-            2: ConnectionGene(2, 4, 0.5, False),
-            3: ConnectionGene(3, 4, 0.5, True),
-            4: ConnectionGene(2, 5, 0.5, True),
-            5: ConnectionGene(5, 4, 0.5, True),
-            8: ConnectionGene(1, 5, 0.5, True),
-        }
-        return NEATGenome(
-            nodes=nodes,
-            connections=connections,
-            fitness=0.1,
-        )
-
-    @pytest.fixture
-    def genome2(self):
-        """Create second parent genome for crossover tests."""
-        nodes = {
-            1: NodeGene(1, NodeType.INPUT),
-            2: NodeGene(2, NodeType.INPUT),
-            3: NodeGene(3, NodeType.INPUT),
-            4: NodeGene(4, NodeType.OUTPUT),
-            5: NodeGene(5, NodeType.HIDDEN),
-            6: NodeGene(6, NodeType.HIDDEN),
-        }
-        connections = {
-            1: ConnectionGene(1, 4, 0.5, True),
-            2: ConnectionGene(2, 4, 0.5, False),
-            3: ConnectionGene(3, 4, 0.5, True),
-            4: ConnectionGene(2, 5, 0.5, True),
-            5: ConnectionGene(5, 4, 0.5, False),
-            6: ConnectionGene(5, 6, 0.5, True),
-            7: ConnectionGene(6, 4, 0.5, True),
-            9: ConnectionGene(3, 5, 0.5, True),
-            10: ConnectionGene(1, 6, 0.5, True),
-        }
-        return NEATGenome(
-            nodes=nodes,
-            connections=connections,
-            fitness=0.2,
-        )
-
-    @pytest.fixture
-    def fully_connected_genome(self):
-        """Create a fully connected genome for the XOR task."""
-        input_nodes = 2
-        hidden_nodes = 4
-        output_nodes = 2
-
-        nodes = {}
-        for i in range(1, input_nodes + 1):
-            nodes[i] = NodeGene(i, NodeType.INPUT, activation_function=ActivationFunction.TANH)
-
-        for i in range(input_nodes + 1, input_nodes + hidden_nodes + 1):
-            nodes[i] = NodeGene(i, NodeType.HIDDEN, activation_function=ActivationFunction.TANH)
-
-        for i in range(input_nodes + hidden_nodes + 1, input_nodes + hidden_nodes + output_nodes + 1):
-            nodes[i] = NodeGene(i, NodeType.OUTPUT)
-
-        connections = {}
-        # connections from input nodes to hidden nodes
-        conn_idx = 1
-        for i in range(1, input_nodes + 1):
-            for j in range(input_nodes + 1, input_nodes + hidden_nodes + 1):
-                weight = jax.random.uniform(jax.random.PRNGKey(conn_idx))
-                connections[conn_idx] = ConnectionGene(i, j, weight, True)
-                conn_idx += 1
-
-        # connections from hidden nodes to output nodes
-        for i in range(input_nodes + 1, input_nodes + hidden_nodes + 1):
-            for j in range(input_nodes + hidden_nodes + 1, input_nodes + hidden_nodes + output_nodes + 1):
-                weight = jax.random.uniform(jax.random.PRNGKey(conn_idx))
-                connections[conn_idx] = ConnectionGene(i, j, weight, True)
-                conn_idx += 1
-
-        return NEATGenome(
-            nodes=nodes,
-            connections=connections,
-            fitness=0.0,
-        )
-
-    def test_compile_policy(self, genome: NEATGenome):
+    def test_compile_policy(self, genome1: NEATGenome):
         """Test the policy compilation."""
         policy = NEATPolicy()
-        policy.compile_genome(genome)
+        policy.compile_genome(genome1)
 
-    def test_forward_pass(self, genome: NEATGenome):
+    def test_forward_pass(self, genome1: NEATGenome):
         """Test the forward pass through the policy."""
         policy = NEATPolicy()
-        params, static_params = policy.compile_genome(genome)
+        params, static_params = policy.compile_genome(genome1)
         inputs = jnp.array([[0.5, 0.5, 0.5]])
 
         outputs = policy.apply(params, static_params, inputs)
 
         assert jnp.all(outputs == 0.75)
 
-    def test_gradients(self, genome: NEATGenome):
+    def test_gradients(self, genome1: NEATGenome):
         """Test the gradients of the policy."""
         policy = NEATPolicy()
-        params, static_params = policy.compile_genome(genome)
+        params, static_params = policy.compile_genome(genome1)
 
         inputs = jnp.array([[0.5, 0.5, 0.5]])
         targets = jnp.array([[1.0]])
@@ -153,10 +62,10 @@ class TestPolicy(object):
         assert grads["weights"][3, 1] == -0.125  # w(2→5)
         assert grads["weights"][4, 1] == 0.0  # w(2→4) should not change since it's disabled
 
-    def test_train(self, genome: NEATGenome):
+    def test_train(self, genome1: NEATGenome):
         """Test the training process of the policy."""
         policy = NEATPolicy()
-        params, static_params = policy.compile_genome(genome)
+        params, static_params = policy.compile_genome(genome1)
         inputs = jnp.array([[0.5, 0.5, 0.5]])
         targets = jnp.array([[1.0]])
 
@@ -197,11 +106,11 @@ class TestPolicy(object):
         ), "Weights for disabled connections should be zero"
         assert jnp.array_equal(params["weights"] != 0, mask), "Weights for enabled connections should not be zero"
 
-    def test_population(self, genome: NEATGenome, genome2: NEATGenome):
+    def test_population(self, genome1: NEATGenome, genome2: NEATGenome):
         """Test the compilation of a population of genomes."""
         policy = NEATPolicy()
-        genome_params, genome_static_params = policy.compile_genome(genome)
-        population_params, population_static_params = policy.compile_population([genome, genome2])
+        genome_params, genome_static_params = policy.compile_genome(genome1)
+        population_params, population_static_params = policy.compile_population([genome1, genome2])
 
         def index_dict_values(data_dict: Dict[str, jax.Array], index: int) -> Dict[str, jax.Array]:
             return {key: value[index] for key, value in data_dict.items()}
@@ -216,10 +125,10 @@ class TestPolicy(object):
 
         assert jnp.all(outputs1 == genome_outputs)
 
-    def test_vectorization(self, genome: NEATGenome, genome2: NEATGenome):
+    def test_vectorization(self, genome1: NEATGenome, genome2: NEATGenome):
         """Test the vectorization of the policy."""
         policy = NEATPolicy()
-        diff_params, static_params = policy.compile_population([genome, genome2])
+        diff_params, static_params = policy.compile_population([genome1, genome2])
 
         inputs = jnp.array([[0.5, 0.5, 0.5], [0.2, 0.3, 0.4]])
 
@@ -231,7 +140,7 @@ class TestPolicy(object):
 
         outputs = jax.vmap(single_apply, in_axes=(0, 0))(inputs, jnp.arange(2))
 
-        genome_params1, genome_static_params1 = policy.compile_genome(genome)
+        genome_params1, genome_static_params1 = policy.compile_genome(genome1)
         genome_params2, genome_static_params2 = policy.compile_genome(genome2)
         outputs1 = policy.apply(genome_params1, genome_static_params1, inputs[0:1])
         outputs2 = policy.apply(genome_params2, genome_static_params2, inputs[1:2])

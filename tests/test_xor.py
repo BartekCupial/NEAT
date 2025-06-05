@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import optax
 import pytest
 
-from neat.algo.genome import ActivationFunction, ConnectionGene, NEATGenome, NodeGene, NodeType
+from neat.algo.genome import NEATGenome
 from neat.policy import NEATPolicy
 from neat.task import XOR
 
@@ -21,46 +21,7 @@ def accuracy(prediction: jnp.ndarray, target: jnp.ndarray) -> jnp.float32:
 
 
 class TestXOR(object):
-    @pytest.fixture
-    def genome(self):
-        """Create a fully connected genome for the XOR task."""
-        input_nodes = 2
-        hidden_nodes = 4
-        output_nodes = 2
-
-        nodes = {}
-        for i in range(1, input_nodes + 1):
-            nodes[i] = NodeGene(i, NodeType.INPUT, activation_function=ActivationFunction.TANH)
-
-        for i in range(input_nodes + 1, input_nodes + hidden_nodes + 1):
-            nodes[i] = NodeGene(i, NodeType.HIDDEN, activation_function=ActivationFunction.TANH)
-
-        for i in range(input_nodes + hidden_nodes + 1, input_nodes + hidden_nodes + output_nodes + 1):
-            nodes[i] = NodeGene(i, NodeType.OUTPUT)
-
-        connections = {}
-        # connections from input nodes to hidden nodes
-        conn_idx = 1
-        for i in range(1, input_nodes + 1):
-            for j in range(input_nodes + 1, input_nodes + hidden_nodes + 1):
-                weight = jax.random.uniform(jax.random.PRNGKey(conn_idx))
-                connections[conn_idx] = ConnectionGene(i, j, weight, True)
-                conn_idx += 1
-
-        # connections from hidden nodes to output nodes
-        for i in range(input_nodes + 1, input_nodes + hidden_nodes + 1):
-            for j in range(input_nodes + hidden_nodes + 1, input_nodes + hidden_nodes + output_nodes + 1):
-                weight = jax.random.uniform(jax.random.PRNGKey(conn_idx))
-                connections[conn_idx] = ConnectionGene(i, j, weight, True)
-                conn_idx += 1
-
-        return NEATGenome(
-            nodes=nodes,
-            connections=connections,
-            fitness=0.0,
-        )
-
-    def test_xor(self, genome: NEATGenome):
+    def test_xor(self, fully_connected_genome: NEATGenome):
         config = SimpleNamespace(
             **{
                 "batch_size": 32,
@@ -76,7 +37,7 @@ class TestXOR(object):
 
         # Initialize model and optimizer
         model = NEATPolicy()
-        params, static_params = model.compile_genome(genome)
+        params, static_params = model.compile_genome(fully_connected_genome)
 
         key = jax.random.PRNGKey(0)
         tx = optax.adam(config.learning_rate)
