@@ -2,6 +2,7 @@ import logging
 from typing import Callable, Optional
 
 import jax.numpy as jnp
+import numpy as np
 from evojax.algo import NEAlgorithm
 from evojax.obs_norm import ObsNormalizer
 from evojax.policy import PolicyNetwork
@@ -35,6 +36,7 @@ class NEATTrainer(Trainer):
         log_dir: str = None,
         logger: logging.Logger = None,
         log_scores_fn: Optional[Callable[[int, jnp.ndarray, str], None]] = None,
+        use_backprop: bool = True,
         backprop_steps=20,
         learning_rate=0.001,
         optimizer="adam",
@@ -96,6 +98,7 @@ class NEATTrainer(Trainer):
             obs_normalizer=self._obs_normalizer,
             use_for_loop=use_for_loop,
             logger=self._logger,
+            use_backprop=use_backprop,
             backprop_steps=backprop_steps,
             learning_rate=learning_rate,
             optimizer=optimizer,
