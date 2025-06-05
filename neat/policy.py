@@ -62,7 +62,7 @@ class NEATPolicy(PolicyNetwork):
 
         # Extract node properties
         biases = jnp.array([getattr(genome.nodes[nid], "bias", 0.0) for nid in all_nodes])
-        activations = [genome.nodes[nid].activation_function.value for nid in all_nodes]
+        activations = jnp.array([genome.nodes[nid].activation_function.value for nid in all_nodes])
 
         # Create enabled mask
         enabled_mask = jnp.zeros((n_nodes, n_nodes), dtype=bool)
@@ -74,6 +74,9 @@ class NEATPolicy(PolicyNetwork):
                 j = node_to_idx[conn.out_node_id]
                 enabled_mask = enabled_mask.at[j, i].set(True)
 
+        input_indices = jnp.arange(len(input_nodes))
+        output_indices = jnp.arange(len(output_nodes)) + len(input_nodes) + len(hidden_nodes)
+
         differentiate_params = {
             "weights": weights,
             "biases": biases,
@@ -82,12 +85,63 @@ class NEATPolicy(PolicyNetwork):
         static_params = {
             "enabled_mask": enabled_mask,
             "activations": activations,
-            "input_indices": list(range(len(input_nodes))),
-            "hidden_indices": list(range(len(input_nodes), len(input_nodes) + len(hidden_nodes))),
-            "output_indices": list(range(len(input_nodes) + len(hidden_nodes), n_nodes)),
+            "input_indices": input_indices,
+            "output_indices": output_indices,
             "eval_order": eval_order,
-            "node_to_idx": node_to_idx,
-            "n_nodes": n_nodes,
+        }
+
+        return differentiate_params, static_params
+
+    def compile_population(self, genomes: List[NEATGenome]) -> Tuple[Dict[str, jnp.ndarray], Dict[str, Any]]:
+        # Find maximum dimensions across population
+        max_nodes = max(len(genome.nodes) for genome in genomes)
+        num_inputs = len([n for n in genomes[0].nodes.values() if n.node_type == NodeType.INPUT])
+        num_outputs = len([n for n in genomes[0].nodes.values() if n.node_type == NodeType.OUTPUT])
+        batch_size = len(genomes)
+
+        # Initialize batched tensors
+        weights = jnp.zeros((batch_size, max_nodes, max_nodes))
+        biases = jnp.zeros((batch_size, max_nodes))
+        enabled_mask = jnp.zeros((batch_size, max_nodes, max_nodes), dtype=bool)
+        activations = jnp.zeros((batch_size, max_nodes), dtype=jnp.int32)
+
+        # Track node ordering for each genome
+        input_indices = jnp.zeros((batch_size, num_inputs), dtype=jnp.int32)
+        output_indices = jnp.zeros((batch_size, num_outputs), dtype=jnp.int32)
+
+        for i, genome in enumerate(genomes):
+            params, static_params = self.compile_genome(genome)
+
+            # Get actual dimensions of this genome
+            genome_weights = params["weights"]
+            genome_biases = params["biases"]
+            genome_enabled_mask = static_params["enabled_mask"]
+            genome_input_indices = static_params["input_indices"]
+            genome_output_indices = static_params["output_indices"]
+            genome_activations = static_params["activations"]
+
+            h, w = genome_weights.shape
+            b_len = genome_biases.shape[0]
+
+            # Slice assignment to handle smaller shapes
+            weights = weights.at[i, :h, :w].set(genome_weights)
+            biases = biases.at[i, :b_len].set(genome_biases)
+
+            enabled_mask = enabled_mask.at[i, :h, :w].set(genome_enabled_mask)
+            activations = activations.at[i, :h].set(genome_activations)
+            input_indices = input_indices.at[i].set(genome_input_indices)
+            output_indices = output_indices.at[i].set(genome_output_indices)
+
+        differentiate_params = {
+            "weights": weights,
+            "biases": biases,
+        }
+
+        static_params = {
+            "enabled_mask": enabled_mask,
+            "activations": activations,
+            "input_indices": input_indices,
+            "output_indices": output_indices,
         }
 
         return differentiate_params, static_params
@@ -103,14 +157,6 @@ class NEATPolicy(PolicyNetwork):
             squeeze_output = False
 
         batch_size = inputs.shape[0]
-        n_nodes = static_params["n_nodes"]
-
-        # Initialize node activations
-        activations = jnp.zeros((batch_size, n_nodes))
-
-        # Set input values
-        input_indices = static_params["input_indices"]
-        activations = activations.at[:, input_indices].set(inputs)
 
         # Process nodes in evaluation order (excluding inputs)
         # Use stop_gradient to prevent gradients through masked-out connections
@@ -121,19 +167,35 @@ class NEATPolicy(PolicyNetwork):
         weights = jnp.where(enabled_mask, raw_weights, stop_gradient)
         biases = diff_params["biases"]
 
-        # For each non-input node, compute its activation
-        for i in range(len(input_indices), n_nodes):
-            # Aggregate inputs from all connected nodes
-            node_input = jnp.dot(activations, weights[i, :]) + biases[i]
+        # Initialize node activations
+        activations = jnp.zeros((batch_size, weights.shape[0]))
 
-            # Apply activation function
+        # Set input values
+        input_indices = static_params["input_indices"]
+        expanded_inputs = jnp.zeros((batch_size, weights.shape[0]))
+        expanded_inputs = expanded_inputs.at[:, : inputs.shape[1]].set(inputs)
+        activations = activations.at[:, input_indices].set(inputs)
+
+        n_inputs = input_indices.shape[0]
+        n_nodes = weights.shape[0]
+
+        # Use jax.lax.fori_loop instead of Python for loop
+        def process_node(i, activations):
+            # Only process non-input nodes
+            node_input = jnp.dot(activations, weights[i, :]) + biases[i]
             activation_fn = static_params["activations"][i]
             activated = self._apply_activation(node_input, activation_fn)
-            activations = activations.at[:, i].set(activated)
+
+            # Conditionally update only if i >= n_inputs
+            should_update = i >= n_inputs
+            new_activation = jnp.where(should_update, activated, activations[:, i])
+            return activations.at[:, i].set(new_activation)
+
+        activations = jax.lax.fori_loop(n_inputs, n_nodes, process_node, activations)
 
         # Extract outputs
         output_indices = static_params["output_indices"]
-        outputs = activations[:, output_indices]
+        outputs = jnp.take(activations, output_indices, axis=1)
 
         if squeeze_output:
             outputs = outputs.squeeze(0)
@@ -141,39 +203,29 @@ class NEATPolicy(PolicyNetwork):
         return outputs
 
     def _apply_activation(self, x: jnp.ndarray, activation_fn: ActivationFunction) -> jnp.ndarray:
-        """Apply activation function."""
-        if activation_fn == ActivationFunction.SIGMOID.value:
-            return jax.nn.sigmoid(x)
-        elif activation_fn == ActivationFunction.TANH.value:
-            return jax.nn.tanh(x)
-        elif activation_fn == ActivationFunction.RELU.value:
-            return jax.nn.relu(x)
-        elif activation_fn == ActivationFunction.IDENTITY.value:
-            return x
-        else:
-            return x
+        """Apply activation function using JAX-compatible switch."""
+
+        activation_funcs = [
+            lambda x: jax.nn.sigmoid(x),  # SIGMOID (index 0)
+            lambda x: jax.nn.tanh(x),  # TANH (index 1)
+            lambda x: jax.nn.relu(x),  # RELU (index 2)
+            lambda x: jax.nn.softmax(x),  # SOFTMAX (index 3)
+            lambda x: x,  # IDENTITY (index 4)
+        ]
+
+        return jax.lax.switch(activation_fn, activation_funcs, x)
 
     def get_actions(self, t_states, params, p_states):
-        """Get actions for a batch of genomes using vectorized computation.
-
-        Args:
-            t_states: Task states containing observations
-            params: List of compiled genomes (each with diff_params and static_params)
-            p_states: Policy states (ignored for NEAT)
-
-            Returns:
-            actions: Vectorized actions from all genomes
-            p_states: Unchanged policy states
-        """
-
-        # Extract observations from task states
         observations = t_states.obs
 
-        # TODO: use vmap when params become vectorizable
+        # Process each genome individually
         actions = []
         for i, (diff_params, static_params) in enumerate(params):
+            # This can return multiple outputs - shape depends on each genome
             action = self.apply(diff_params, static_params, observations[i])
             actions.append(action)
+
+        # Stack the results - this works regardless of output count per genome
         actions = jnp.stack(actions, axis=0)
 
         return actions, p_states
