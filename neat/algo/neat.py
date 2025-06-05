@@ -31,11 +31,10 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         c1: float = 1.0,  # Excess genes coefficient
         c2: float = 1.0,  # Disjoint genes coefficient
         c3: float = 0.4,  # Weight difference coefficient
-        prob_add_node: float = 0.03,
-        prob_add_connection: float = 0.05,
-        prob_mutate_weights: float = 0.8,
-        prob_mutate_weight_shift: float = 0.9,
-        weight_mutation_power: float = 0.5,
+        prob_add_node: float = 0.1,
+        prob_add_connection: float = 0.1,
+        prob_replace_weights: float = 0.1,
+        prob_perturb_weights: float = 0.8,
         max_stagnation: int = 15,
         elitism: int = 2,
         survival_threshold: float = 0.2,
@@ -52,9 +51,8 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
             c1, c2, c3: Coefficients for compatibility distance calculation
             prob_add_node: Probability of adding a node mutation
             prob_add_connection: Probability of adding a connection mutation
-            prob_mutate_weights: Probability of weight mutation
-            prob_mutate_weight_shift: Probability of weight shift vs reset
-            weight_mutation_power: Standard deviation for weight mutations
+            prob_replace_weights: Probability of weight mutation
+            prob_perturb_weights: Probability of weight perturbation
             max_stagnation: Maximum generations without improvement before species elimination
             elitism: Number of best genomes to preserve
             survival_threshold: Fraction of each species allowed to reproduce
@@ -75,9 +73,8 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         self.c1, self.c2, self.c3 = c1, c2, c3
         self.prob_add_node = prob_add_node
         self.prob_add_connection = prob_add_connection
-        self.prob_mutate_weights = prob_mutate_weights
-        self.prob_mutate_weight_shift = prob_mutate_weight_shift
-        self.weight_mutation_power = weight_mutation_power
+        self.prob_replace_weights = prob_replace_weights
+        self.prob_perturb_weights = prob_perturb_weights
         self.max_stagnation = max_stagnation
         self.elitism = elitism
         self.survival_threshold = survival_threshold
@@ -172,6 +169,65 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
         return matching, excess, disjoint
 
+    def _crossover(self, parent1: NEATGenome, parent2: NEATGenome) -> NEATGenome:
+        self.rand_key, init_key = jax.random.split(self.rand_key)
+
+        dominant = parent1 if parent1.fitness > parent2.fitness else parent2
+        recessive = parent2 if parent1.fitness > parent2.fitness else parent1
+
+        matching, excess, disjoint = self._group_genes(dominant, recessive)
+
+        offspring_nodes = dict()
+        offspring_connections = dict()
+
+        for innov in matching:
+            # Matching genes are inherited randomly
+            if jax.random.uniform(init_key) < 0.5:
+                weight = dominant.connections[innov].weight
+                enabled = dominant.connections[innov].enabled
+            else:
+                weight = recessive.connections[innov].weight
+                enabled = recessive.connections[innov].enabled
+
+            if not enabled and jax.random.uniform(init_key) < 0.75:
+                # There was a 75% chance that an inherited gene was disabled
+                # if it was disabled in either parent.
+                enabled = True
+
+            offspring_connections[innov] = ConnectionGene(
+                in_node_id=dominant.connections[innov].in_node_id,
+                out_node_id=dominant.connections[innov].out_node_id,
+                weight=weight,
+                enabled=enabled,
+            )
+
+        for innov in excess.union(disjoint):
+            if parent1.fitness != parent2.fitness:
+                # Excess and disjoint genes are inherited from the dominant parent
+                if innov in dominant.connections:
+                    offspring_connections[innov] = deepcopy(dominant.connections[innov])
+            else:
+                # All disjoint and excess genes from both parents are included in the offspring
+                if innov in dominant.connections:
+                    offspring_connections[innov] = deepcopy(dominant.connections[innov])
+
+                elif innov in recessive.connections:
+                    offspring_connections[innov] = deepcopy(recessive.connections[innov])
+
+        # Create nodes from the connections
+        for connection in offspring_connections.values():
+            for id in (connection.in_node_id, connection.out_node_id):
+                if id not in offspring_nodes:
+                    # If the node is not already in the offspring, add it
+                    if id in dominant.nodes:
+                        offspring_nodes[id] = deepcopy(dominant.nodes[id])
+                    elif id in recessive.nodes:
+                        offspring_nodes[id] = deepcopy(recessive.nodes[id])
+                    else:
+                        raise ValueError(f"Node {id} not found in either parent genomes.")
+
+        return NEATGenome(nodes=offspring_nodes, connections=offspring_connections)
+
     def _calculate_compatibility_distance(self, genome1: NEATGenome, genome2: NEATGenome) -> float:
         """Calculate compatibility distance between two genomes."""
         matching, excess, disjoint = self._group_genes(genome1, genome2)
@@ -217,44 +273,6 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
             else:
                 # New species
                 self.neat_state.stagnation_counters.append(0)
-
-    def _speciate_population(self):
-        """
-        Divide the population into species based on compatibility distance.
-
-        From the NEAT paper:
-        "In each generation, genomes are sequentially placed into species.
-        Each existing species is represented by a random genome inside
-        the species from the *previous generation*. A given genome *g*
-        in the current generation is placed in the first species in which *g*
-        is compatible with the representative genome of that species."
-        """
-        self.rand_key, init_key = jax.random.split(self.rand_key)
-
-        # Species representatives from the previous generation
-        new_species = [
-            [jax.random.choice(init_key, self.neat_state.population[species])] for species in self.neat_state.species
-        ]
-
-        for i, genome in enumerate(self.neat_state.population):
-            placed = False
-
-            for j, species in enumerate(new_species):
-                distance = self._calculate_compatibility_distance(genome, species[0])
-
-                if distance < self.compatibility_threshold:
-                    # Place genome in this species
-                    new_species[j].append(i)
-                    placed = True
-                    break
-
-            # If not placed in any species, create a new species
-            if not placed:
-                new_species.append([i])
-
-        self.neat_state.species = new_species
-
-        self._update_stagnation_counters()
 
     def _build_graph(self, connections: Dict[int, ConnectionGene]) -> nx.DiGraph:
         """Build a directed graph from the connections."""
@@ -371,15 +389,13 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         new_connections = deepcopy(genome.connections)
 
         # Weight mutations
-        if jax.random.uniform(key1) < self.prob_mutate_weights:
-            for conn_key in new_connections:
-                if jax.random.uniform(key1) < 0.9:  # 90% of connections get mutated
-                    if jax.random.uniform(key1) < self.prob_mutate_weight_shift:
-                        # Shift weight
-                        new_connections[conn_key].weight += jax.random.normal(key1) * self.weight_mutation_power
-                    else:
-                        # Replace weight
-                        new_connections[conn_key].weight = jax.random.normal(key1) * 0.5
+        for conn_key in new_connections:
+            if jax.random.uniform(key1) < self.prob_perturb_weights:
+                # Perturb weight
+                new_connections[conn_key].weight += jax.random.normal(key1) * 0.1
+            elif jax.random.uniform(key1) < self.prob_replace_weights + self.prob_perturb_weights:
+                # Mutate weight
+                new_connections[conn_key].weight = jax.random.normal(key1)
 
         # Add connection mutation
         if jax.random.uniform(key2) < self.prob_add_connection:
@@ -406,96 +422,182 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         self.neat_state.species = active_species
         self.neat_state.stagnation_counters = active_stagnation
 
-    def _calculate_adjusted_fitness(self):
+    def _adjust_fitness(self):
         """Calculate adjusted fitness for each genome based on species sharing."""
         for species_indices in self.neat_state.species:
             species_size = len(species_indices)
             for idx in species_indices:
                 genome = self.neat_state.population[idx]
-                genome.adjusted_fitness = genome.fitness / species_size
+                genome.fitness = genome.fitness / species_size
 
-    def _reproduce_species(self) -> List[NEATGenome]:
-        """Reproduce each species to create the next generation."""
+    def _choose_species_representatives(self) -> List[NEATGenome]:
+        """Select representatives for each species."""
         self.rand_key, key = jax.random.split(self.rand_key)
 
-        new_population = []
-
-        # Calculate total adjusted fitness
-        total_adjusted_fitness = sum(
-            sum(self.neat_state.population[idx].adjusted_fitness for idx in species_indices)
-            for species_indices in self.neat_state.species
-        )
-
+        representatives = []
         for species_indices in self.neat_state.species:
             if not species_indices:
                 continue
 
-            # Calculate species fitness share
-            species_fitness = sum(self.neat_state.population[idx].adjusted_fitness for idx in species_indices)
+            # Each existing species is represented by a random genome inside
+            # the species from the previous generation.
+            parent_idx = int(jax.random.uniform(key) * len(species_indices))
+            genome = self.neat_state.population[species_indices[parent_idx]]
+            representatives.append(genome)
 
-            # Determine number of offspring for this species
-            if total_adjusted_fitness > 0:
-                offspring_count = int((species_fitness / total_adjusted_fitness) * self.pop_size)
-            else:
-                offspring_count = len(species_indices)
+        return representatives
 
-            # Ensure at least one offspring if species exists
-            offspring_count = max(1, offspring_count)
+    def _reproduce_species(self) -> List[NEATGenome]:
+        """Reproduce each species to create the next generation."""
+        # TODO: The interspecies mating rate was 0.001
+
+        # Calculate total adjusted fitness
+        species_fitnesses = [
+            sum(self.neat_state.population[idx].fitness for idx in species_indices)
+            for species_indices in self.neat_state.species
+            if species_indices
+        ]
+        total_adjusted_fitness = sum(species_fitnesses)
+        assert total_adjusted_fitness > 0, "Total adjusted fitness must be greater than zero."
+
+        # Calculate raw offspring counts (float)
+        num_species = len(self.neat_state.species)
+        raw_offspring_counts = [
+            1 + (sf / total_adjusted_fitness) * (self.pop_size - num_species) for sf in species_fitnesses
+        ]
+
+        # Take floor of each and track remainders
+        offspring_counts = [jnp.floor(x) for x in raw_offspring_counts]
+        remainders = [x - jnp.floor(x) for x in raw_offspring_counts]
+
+        # Calculate remaining slots after assigning minimum offspring
+        remaining = self.pop_size - int(sum(offspring_counts))
+        if remaining > 0:
+            sorted_indices = sorted(range(len(remainders)), key=lambda i: remainders[i], reverse=True)
+            for i in range(remaining):
+                offspring_counts[sorted_indices[i]] += 1
+
+        new_population = []
+        for species_indices, offspring_count in zip(self.neat_state.species, offspring_counts):
+            if not species_indices:
+                continue
+
+            # The champion of each species with more than five networks
+            # was copied into the next generation unchanged.
+            if len(species_indices) > 5:
+                new_population.append(
+                    deepcopy(
+                        max(
+                            (self.neat_state.population[idx] for idx in species_indices),
+                            key=lambda genome: genome.fitness,
+                        )
+                    )
+                )
+                offspring_count -= 1
 
             # Sort species by fitness
             species_genomes = [(idx, self.neat_state.population[idx]) for idx in species_indices]
             species_genomes.sort(key=lambda x: x[1].fitness, reverse=True)
 
-            # Elite selection
-            elite_count = min(self.elitism, len(species_genomes))
-            for i in range(elite_count):
-                if len(new_population) < self.pop_size:
-                    new_population.append(deepcopy(species_genomes[i][1]))
-
             # Reproduce remaining offspring
             survival_count = max(1, int(len(species_genomes) * self.survival_threshold))
             breeding_pool = [genome for _, genome in species_genomes[:survival_count]]
 
-            while len(new_population) < self.pop_size and len(new_population) - elite_count < offspring_count:
-                key, subkey = jax.random.split(key)
-
-                if len(breeding_pool) == 1:
+            # In each generation, 25% of offspring resulted from mutation without crossover.
+            no_crossover_count = int(offspring_count * 0.25)
+            for _ in range(no_crossover_count):
+                self.rand_key, subkey = jax.random.split(self.rand_key)
+                if breeding_pool:
                     # Asexual reproduction
-                    parent = breeding_pool[0]
+                    parent_idx = int(jax.random.uniform(subkey) * len(breeding_pool))
+                    parent = breeding_pool[parent_idx]
                     offspring = self._mutate_genome(deepcopy(parent))
-                else:
-                    # Sexual reproduction
-                    parent1_idx = int(jax.random.uniform(subkey) * len(breeding_pool))
-                    parent2_idx = int(jax.random.uniform(subkey) * len(breeding_pool))
+                    offspring.fitness = 0.0
 
+                    new_population.append(offspring)
+                    offspring_count -= 1
+
+            while offspring_count > 0:
+                self.rand_key, subkey1, subkey2 = jax.random.split(self.rand_key, 3)
+
+                if len(breeding_pool) < 2:
+                    # If breeding pool has less than 2 genomes, just mutate one
+                    parent1_idx = int(jax.random.uniform(subkey1) * len(breeding_pool))
                     parent1 = breeding_pool[parent1_idx]
-                    parent2 = breeding_pool[parent2_idx]
+                    offspring = self._mutate_genome(deepcopy(parent1))
+                    offspring.fitness = 0.0
 
-                    offspring = self._crossover(parent1, parent2)
-                    offspring = self._mutate_genome(offspring)
+                    new_population.append(offspring)
+                    offspring_count -= 1
+                    continue
 
+                parent1_idx = int(jax.random.uniform(subkey1) * len(breeding_pool))
+                parent2_idx = int(jax.random.uniform(subkey2) * len(breeding_pool))
+
+                parent1 = breeding_pool[parent1_idx]
+                parent2 = breeding_pool[parent2_idx]
+
+                offspring = self._crossover(parent1, parent2)
+                offspring = self._mutate_genome(offspring)
                 offspring.fitness = 0.0
-                new_population.append(offspring)
 
-        # Fill remaining slots if needed
-        while len(new_population) < self.pop_size:
-            key, subkey = jax.random.split(key)
-            # Add random genome from current population
-            idx = int(jax.random.uniform(subkey) * len(self.neat_state.population))
-            genome_copy = deepcopy(self.neat_state.population[idx])
-            genome_copy = self._mutate_genome(genome_copy)
-            genome_copy.fitness = 0.0
-            new_population.append(genome_copy)
+                new_population.append(offspring)
+                offspring_count -= 1
+
+        assert len(new_population) == self.pop_size
 
         return new_population[: self.pop_size]
+
+    def _speciate_population(self, species_representatives: List[NEATGenome]):
+        """
+        Divide the population into species based on compatibility distance.
+
+        From the NEAT paper:
+        "In each generation, genomes are sequentially placed into species.
+        Each existing species is represented by a random genome inside
+        the species from the *previous generation*. A given genome *g*
+        in the current generation is placed in the first species in which *g*
+        is compatible with the representative genome of that species."
+        """
+        new_species = [[] for _ in range(len(species_representatives))]
+        for i, genome in enumerate(self.neat_state.population):
+            placed = False
+
+            for j, representative in enumerate(species_representatives):
+                distance = self._calculate_compatibility_distance(genome, representative)
+
+                if distance < self.compatibility_threshold:
+                    # Place genome in this species
+                    new_species[j].append(i)
+                    placed = True
+                    break
+
+            # If not placed in any species, create a new species
+            if not placed:
+                new_species.append([i])
+                species_representatives.append(genome)
+
+        # Remove empty species
+        new_species = [species for species in new_species if species]
+
+        # Update the NEAT state with the new species
+        self.neat_state.species = new_species
+
+        assert sum(len(species) for species in self.neat_state.species) == self.pop_size
+        assert len(self.neat_state.species) > 0, "There must be at least one species."
+
+        # self._update_stagnation_counters()
 
     def _evolve_population(self):
         """Complete evolution step."""
         # Calculate adjusted fitness
-        self._calculate_adjusted_fitness()
+        self._adjust_fitness()
 
         # Remove stagnant species
-        self._remove_stagnant_species()
+        # self._remove_stagnant_species()
+
+        # Species representatives
+        species_representatives = self._choose_species_representatives()
 
         # Reproduce species
         new_population = self._reproduce_species()
@@ -503,79 +605,28 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         # Update population
         self.neat_state.population = new_population
 
+        assert len(self.neat_state.population) == self.pop_size
+
         # Update generation counter
         self.neat_state.generation += 1
 
         # Re-speciate the new population
-        self._speciate_population()
-
-    def _crossover(self, parent1: NEATGenome, parent2: NEATGenome) -> NEATGenome:
-        self.rand_key, init_key = jax.random.split(self.rand_key)
-
-        dominant = parent1 if parent1.fitness > parent2.fitness else parent2
-        recessive = parent2 if parent1.fitness > parent2.fitness else parent1
-
-        matching, excess, disjoint = self._group_genes(dominant, recessive)
-
-        offspring_nodes = dict()
-        offspring_connections = dict()
-
-        for innov in matching:
-            # Matching genes are inherited randomly
-            if jax.random.uniform(init_key) < 0.5:
-                weight = dominant.connections[innov].weight
-                enabled = dominant.connections[innov].enabled
-            else:
-                weight = recessive.connections[innov].weight
-                enabled = recessive.connections[innov].enabled
-
-            offspring_connections[innov] = ConnectionGene(
-                in_node_id=dominant.connections[innov].in_node_id,
-                out_node_id=dominant.connections[innov].out_node_id,
-                weight=weight,
-                enabled=enabled,
-            )
-
-        for innov in excess.union(disjoint):
-            if parent1.fitness != parent2.fitness:
-                # Excess and disjoint genes are inherited from the dominant parent
-                if innov in dominant.connections:
-                    offspring_connections[innov] = deepcopy(dominant.connections[innov])
-            else:
-                # All disjoint and excess genes from both parents are included in the offspring
-                if innov in dominant.connections:
-                    offspring_connections[innov] = deepcopy(dominant.connections[innov])
-
-                elif innov in recessive.connections:
-                    offspring_connections[innov] = deepcopy(recessive.connections[innov])
-
-        # Create nodes from the connections
-        for connection in offspring_connections.values():
-            for id in (connection.in_node_id, connection.out_node_id):
-                if id not in offspring_nodes:
-                    # If the node is not already in the offspring, add it
-                    if id in dominant.nodes:
-                        offspring_nodes[id] = deepcopy(dominant.nodes[id])
-                    elif id in recessive.nodes:
-                        offspring_nodes[id] = deepcopy(recessive.nodes[id])
-                    else:
-                        raise ValueError(f"Node {id} not found in either parent genomes.")
-
-        return NEATGenome(nodes=offspring_nodes, connections=offspring_connections)
+        self._speciate_population(species_representatives)
 
     def ask(self) -> jnp.ndarray:
         """Return current population parameters."""
         return self.policy.compile_population(self.neat_state.population)
 
     def tell(self, fitness: jnp.ndarray) -> None:
+        # Update best nominal fitness
+        self.neat_state.best_fitness = max(fitness)
+
+        # Offset fitness so its above zero
+        # fitness = fitness - jnp.min(fitness)
+
         # Assign fitness scores
         for genome, fit in zip(self.neat_state.population, fitness):
             genome.fitness = fit
-
-        # Update best fitness
-        current_best = max(fitness)
-        if current_best > self.neat_state.best_fitness:
-            self.neat_state.best_fitness = current_best
 
         # Evolve population
         self._evolve_population()
@@ -588,7 +639,9 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
     @property
     def best_params(self) -> jnp.ndarray:
-        return max(self.neat_state.population, key=lambda genome: genome.fitness)
+        best_genome = max(self.neat_state.population, key=lambda genome: genome.fitness)
+
+        return self.policy.compile_genome(best_genome)
 
 
 class CustomPopulationNEAT(NEAT):
