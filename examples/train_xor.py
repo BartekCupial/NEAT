@@ -10,6 +10,7 @@ import shutil
 from evojax import util
 
 from neat.algo import NEAT
+from neat.algo.genome import ActivationFunction
 from neat.policy import NEATPolicy
 from neat.task import XOR
 from neat.trainer import NEATTrainer
@@ -17,8 +18,8 @@ from neat.trainer import NEATTrainer
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pop-size", type=int, default=64, help="NE population size.")
-    parser.add_argument("--batch-size", type=int, default=32, help="Batch size for training.")
+    parser.add_argument("--pop-size", type=int, default=150, help="NE population size.")
+    parser.add_argument("--batch-size", type=int, default=64, help="Batch size for training.")
     parser.add_argument("--dataset-size", type=int, default=1024, help="Batch size for training.")
     parser.add_argument("--max-iter", type=int, default=5000, help="Max training iterations.")
     parser.add_argument("--test-interval", type=int, default=1000, help="Test interval.")
@@ -60,6 +61,7 @@ def main(config):
         c1=config.c1,
         c2=config.c2,
         c3=config.c3,
+        activation_function=ActivationFunction.MODIFIED_SIGMOID,
         logger=logger,
         seed=config.seed,
     )

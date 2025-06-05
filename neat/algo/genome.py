@@ -15,6 +15,7 @@ class ActivationFunction(enum.IntEnum):
     RELU = 2
     SOFTMAX = 3
     IDENTITY = 4
+    MODIFIED_SIGMOID = 5
 
 
 class AggregationFunction(enum.IntEnum):

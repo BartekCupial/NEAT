@@ -211,6 +211,7 @@ class NEATPolicy(PolicyNetwork):
             lambda x: jax.nn.relu(x),  # RELU (index 2)
             lambda x: jax.nn.softmax(x),  # SOFTMAX (index 3)
             lambda x: x,  # IDENTITY (index 4)
+            lambda x: 1.0 / (1.0 + jnp.exp(-4.9 * x)),  # MODIFIED_SIGMOID (index 5)
         ]
 
         return jax.lax.switch(activation_fn, activation_funcs, x)

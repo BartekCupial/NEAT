@@ -41,6 +41,7 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         max_stagnation: int = 15,
         survival_threshold: float = 0.2,
         interspecies_mating_rate: float = 0.001,
+        activation_function: ActivationFunction = ActivationFunction.IDENTITY,
         seed: int = 0,
         logger: logging.Logger = None,
     ):
@@ -81,6 +82,8 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         self.max_stagnation = max_stagnation
         self.survival_threshold = survival_threshold
         self.interspecies_mating_rate = interspecies_mating_rate
+
+        self.activation_function = activation_function
 
         self.rand_key = jax.random.PRNGKey(seed)
 
@@ -377,7 +380,7 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         new_node_id = self.neat_state.node_counter
         self.neat_state.node_counter += 1
         new_nodes = nodes.copy()
-        new_nodes[new_node_id] = NodeGene(new_node_id, NodeType.HIDDEN)
+        new_nodes[new_node_id] = NodeGene(new_node_id, NodeType.HIDDEN, activation_function=self.activation_function)
 
         # Disable the old connection and create two new connections
         new_connections = connections.copy()
