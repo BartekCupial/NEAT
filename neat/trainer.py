@@ -141,7 +141,7 @@ class NEATTrainer(Trainer):
                 self._logger.debug("solver.ask time: {0:.4f}s".format(time.perf_counter() - start_time))
 
                 start_time = time.perf_counter()
-                scores, bds = self.sim_mgr.eval_params(params=params, test=False)
+                scores, bds, _ = self.sim_mgr.eval_params(params=params, test=False)
                 self._logger.debug("sim_mgr.eval_params time: {0:.4f}s".format(time.perf_counter() - start_time))
 
                 start_time = time.perf_counter()
@@ -162,6 +162,8 @@ class NEATTrainer(Trainer):
 
                 if i > 0 and i % self._test_interval == 0:
                     best_params = self.solver.best_params
+                    if self._use_backprop:
+                        _, _, best_params = self.sim_mgr.eval_params(params=best_params, test=False)
                     test_scores, _ = self.sim_mgr.eval_params(params=best_params, test=True)
                     self._logger.info(
                         "[TEST] Iter={0}, #tests={1}, max={2:.4f}, avg={3:.4f}, "
@@ -187,6 +189,8 @@ class NEATTrainer(Trainer):
 
             # Test and save the final model.
             best_params = self.solver.best_params
+            if self._use_backprop:
+                _, _, best_params = self.sim_mgr.eval_params(params=best_params, test=False)
             test_scores, _ = self.sim_mgr.eval_params(params=best_params, test=True)
             self._logger.info(
                 "[TEST] Iter={0}, #tests={1}, max={2:.4f}, avg={3:.4f}, "

@@ -9,8 +9,8 @@ import shutil
 
 from evojax import util
 
-from neat.algo import NEAT
 from neat.algo.genome import ActivationFunction
+from neat.algo.neat import NEAT
 from neat.policy import NEATPolicy
 from neat.task import XOR
 from neat.trainer import NEATTrainer
@@ -18,12 +18,12 @@ from neat.trainer import NEATTrainer
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pop-size", type=int, default=300, help="NE population size.")
+    parser.add_argument("--pop-size", type=int, default=150, help="NE population size.")
     parser.add_argument("--batch-size", type=int, default=128, help="Batch size for training.")
     parser.add_argument("--dataset-size", type=int, default=1024, help="Batch size for training.")
     parser.add_argument("--max-iter", type=int, default=5000, help="Max training iterations.")
-    parser.add_argument("--test-interval", type=int, default=1000, help="Test interval.")
-    parser.add_argument("--log-interval", type=int, default=10, help="Logging interval.")
+    parser.add_argument("--test-interval", type=int, default=100, help="Test interval.")
+    parser.add_argument("--log-interval", type=int, default=1000, help="Logging interval.")
     parser.add_argument("--c1", type=float, default=1.0, help="NEAT c1 parameter.")
     parser.add_argument("--c2", type=float, default=1.0, help="NEAT c2 parameter.")
     parser.add_argument("--c3", type=float, default=0.4, help="NEAT c3 parameter.")
@@ -32,8 +32,9 @@ def parse_args():
     parser.add_argument("--compatibility-threshold", type=float, default=2.0, help="NEAT compatibility threshold.")
     parser.add_argument("--survival-threshold", type=float, default=0.25, help="NEAT survival threshold.")
     parser.add_argument("--max-stagnation", type=int, default=10, help="Max stagnation for NEAT.")
-    parser.add_argument("--backprop-steps", type=int, default=20, help="Number of backpropagation steps.")
-    parser.add_argument("--learning-rate", type=float, default=0.001, help="Learning rate for backpropagation.")
+    parser.add_argument("--use_backprop", action="store_true", help="Use backpropagation for training.")
+    parser.add_argument("--backprop-steps", type=int, default=100, help="Number of backpropagation steps.")
+    parser.add_argument("--learning-rate", type=float, default=0.01, help="Learning rate for backpropagation.")
     parser.add_argument(
         "--optimizer", type=str, default="adam", choices=["adam", "sgd", "rmsprop"], help="Optimizer type."
     )
@@ -58,7 +59,7 @@ def main(config):
     solver = NEAT(
         pop_size=config.pop_size,
         num_inputs=2,
-        num_outputs=1,
+        num_outputs=2,
         survival_threshold=config.survival_threshold,
         compatibility_threshold=config.compatibility_threshold,
         c1=config.c1,
@@ -85,6 +86,10 @@ def main(config):
         n_evaluations=1,
         seed=config.seed,
         log_dir=log_dir,
+        use_backprop=config.use_backprop,
+        backprop_steps=config.backprop_steps,
+        learning_rate=config.learning_rate,
+        optimizer=config.optimizer,
         logger=logger,
     )
     trainer.run(demo_mode=False)

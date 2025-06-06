@@ -292,9 +292,7 @@ class BackpropSimManager(object):
             policy_state = split_states_for_pmap(policy_state)
 
         # Do the rollouts.
-        scores, all_obs, masks, final_states, params = self.rollout(
-            rollout_func, task_state, policy_state, params, self.obs_params
-        )
+        scores, all_obs, masks, final_states, params = self.rollout(rollout_func, task_state, policy_state, params)
         if self._num_device > 1:
             all_obs = reshape_data_from_pmap(all_obs)
             masks = reshape_data_from_pmap(masks)
@@ -319,9 +317,9 @@ class BackpropSimManager(object):
         if not self._ma_training:
             final_states = tree_map(lambda x: x.reshape((scores.shape[0], n_repeats, *x.shape[1:])), final_states)
 
-        return scores, self._bd_summarize_fn(final_states)
+        return scores, self._bd_summarize_fn(final_states), params
 
-    def rollout(self, rollout_func, task_state, policy_state, params, obs_params):
+    def rollout(self, rollout_func, task_state, policy_state, params):
         if self._use_backprop:
             diff_params, static_params = params
             opt_state = self._optimizer.init(diff_params)
