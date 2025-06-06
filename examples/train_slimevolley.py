@@ -42,23 +42,38 @@ import shutil
 
 import jax
 import jax.tree_util
-from evojax import Trainer, util
-from evojax.algo import CMA
-from evojax.policy.mlp import MLPPolicy
+from evojax import util
 from evojax.task.slimevolley import SlimeVolley
+
+from neat.algo.genome import ActivationFunction
+from neat.algo.neat import NEAT
+from neat.policy import NEATPolicy
+from neat.trainer import NEATTrainer
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pop-size", type=int, default=128, help="ES population size.")
-    parser.add_argument("--hidden-size", type=int, default=20, help="Policy hidden size.")
+    parser.add_argument("--pop-size", type=int, default=150, help="NEAT population size.")
     parser.add_argument("--num-tests", type=int, default=100, help="Number of test rollouts.")
     parser.add_argument("--n-repeats", type=int, default=16, help="Training repetitions.")
     parser.add_argument("--max-iter", type=int, default=500, help="Max training iterations.")
     parser.add_argument("--test-interval", type=int, default=50, help="Test interval.")
     parser.add_argument("--log-interval", type=int, default=10, help="Logging interval.")
-    parser.add_argument("--seed", type=int, default=123, help="Random seed for training.")
-    parser.add_argument("--init-std", type=float, default=0.5, help="Initial std.")
+    parser.add_argument("--c1", type=float, default=1.0, help="NEAT c1 parameter.")
+    parser.add_argument("--c2", type=float, default=1.0, help="NEAT c2 parameter.")
+    parser.add_argument("--c3", type=float, default=0.0, help="NEAT c3 parameter.")
+    parser.add_argument("--prob_add_node", type=float, default=0.15, help="Probability of adding a node.")
+    parser.add_argument("--prob_add_connection", type=float, default=0.3, help="Probability of adding a connection.")
+    parser.add_argument("--compatibility-threshold", type=float, default=3.0, help="NEAT compatibility threshold.")
+    parser.add_argument("--survival-threshold", type=float, default=0.25, help="NEAT survival threshold.")
+    parser.add_argument("--max-stagnation", type=int, default=10, help="Max stagnation for NEAT.")
+    parser.add_argument("--use_backprop", action="store_true", help="Use backpropagation for training.")
+    parser.add_argument("--backprop-steps", type=int, default=100, help="Number of backpropagation steps.")
+    parser.add_argument("--learning-rate", type=float, default=0.005, help="Learning rate for backpropagation.")
+    parser.add_argument(
+        "--optimizer", type=str, default="adam", choices=["adam", "sgd", "rmsprop"], help="Optimizer type."
+    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for training.")
     parser.add_argument("--gpu-id", type=str, help="GPU(s) to use.")
     parser.add_argument("--debug", action="store_true", help="Debug mode.")
     config, _ = parser.parse_known_args()
@@ -76,23 +91,26 @@ def main(config):
     max_steps = 3000
     train_task = SlimeVolley(test=False, max_steps=max_steps)
     test_task = SlimeVolley(test=True, max_steps=max_steps)
-    policy = MLPPolicy(
-        input_dim=train_task.obs_shape[0],
-        hidden_dims=[
-            config.hidden_size,
-        ],
-        output_dim=train_task.act_shape[0],
-        output_act_fn="tanh",
-    )
-    solver = CMA(
+    policy = NEATPolicy()
+    solver = NEAT(
         pop_size=config.pop_size,
-        param_size=policy.num_params,
-        init_stdev=config.init_std,
+        num_inputs=train_task.obs_shape[0],
+        num_outputs=train_task.act_shape,
+        survival_threshold=config.survival_threshold,
+        compatibility_threshold=config.compatibility_threshold,
+        c1=config.c1,
+        c2=config.c2,
+        c3=config.c3,
+        prob_add_node=config.prob_add_node,
+        prob_add_connection=config.prob_add_connection,
+        max_stagnation=config.max_stagnation,
+        activation_function=ActivationFunction.TANH,
         seed=config.seed,
         logger=logger,
     )
+
     # Train.
-    trainer = Trainer(
+    trainer = NEATTrainer(
         policy=policy,
         solver=solver,
         train_task=train_task,
@@ -104,6 +122,10 @@ def main(config):
         n_evaluations=config.num_tests,
         seed=config.seed,
         log_dir=log_dir,
+        use_backprop=config.use_backprop,
+        backprop_steps=config.backprop_steps,
+        learning_rate=config.learning_rate,
+        optimizer=config.optimizer,
         logger=logger,
     )
     trainer.run(demo_mode=False)
