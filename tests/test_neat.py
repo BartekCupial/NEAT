@@ -1,7 +1,6 @@
 import pytest
 
-from neat.algo import NEAT
-from neat.algo.neat import CustomPopulationNEAT, NEATGenome
+from neat.algo.neat import NEAT, CustomPopulationNEAT, NEATGenome
 
 
 class TestNEAT(object):

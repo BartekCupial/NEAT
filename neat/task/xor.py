@@ -29,25 +29,8 @@ def loss_fn(prediction: jnp.ndarray, target: jnp.ndarray) -> jnp.float32:
     return jnp.mean(per_example_losses)
 
 
-def error_based_fitness(prediction: jnp.ndarray, target: jnp.ndarray) -> jnp.float32:
-    """Error-based fitness that provides continuous feedback."""
-    # Convert predictions to probabilities using sigmoid
-    probs = jax.nn.sigmoid(prediction.squeeze())
-
-    # Calculate mean squared error
-    mse = jnp.mean((probs - target) ** 2)
-
-    # Convert to fitness (higher is better)
-    # Maximum possible error is 1.0, so fitness ranges from 0 to 1
-    fitness = 1.0 - mse
-    return fitness
-
-
 def accuracy(prediction: jnp.ndarray, target: jnp.ndarray) -> jnp.float32:
-    probs = jax.nn.sigmoid(prediction.squeeze())
-    predicted_class = probs > 0.5  # Convert probabilities to binary predictions
-
-    # predicted_class = jnp.argmax(prediction, axis=1)
+    predicted_class = jnp.argmax(prediction, axis=1)
     return jnp.mean(predicted_class == target)
 
 
@@ -92,7 +75,7 @@ class XOR(VectorizedTask):
             if test:
                 reward = accuracy(action, state.labels)
             else:
-                reward = error_based_fitness(action, state.labels)
+                reward = -loss_fn(action, state.labels)
             return state, reward, jnp.ones(())
 
         self._step_fn = jax.jit(jax.vmap(step_fn))

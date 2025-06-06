@@ -218,15 +218,41 @@ class NEATPolicy(PolicyNetwork):
 
     def get_actions(self, t_states, params, p_states):
         observations = t_states.obs
-
         diff_params, static_params = params
-
-        def single_apply(inp, idx):
-            # Extract parameters for this specific genome
-            diff_p = {key: value[idx] for key, value in diff_params.items()}
-            static_p = {key: value[idx] for key, value in static_params.items()}
-            return self.apply(diff_p, static_p, inp)
-
-        actions = jax.vmap(single_apply, in_axes=(0, 0))(observations, jnp.arange(observations.shape[0]))
-
+        vectorized_apply = self._get_cached_apply_fn()
+        actions = vectorized_apply(diff_params, static_params, observations)
         return actions, p_states
+
+    def _create_jit_apply_fn(self):
+        """Create a JIT-compiled function for applying the network."""
+
+        @jax.jit
+        def jit_apply_single(diff_params, static_params, inputs):
+            return self.apply(diff_params, static_params, inputs)
+
+        return jit_apply_single
+
+    def _extract_single_genome_params(self, diff_params, static_params, idx):
+        """Extract parameters for a single genome from batched parameters."""
+        single_diff = jax.tree_util.tree_map(lambda x: x[idx], diff_params)
+        single_static = jax.tree_util.tree_map(lambda x: x[idx], static_params)
+        return single_diff, single_static
+
+    def _create_vectorized_apply_fn(self):
+        """Create a vectorized version of the apply function."""
+        jit_apply_single = self._create_jit_apply_fn()
+
+        def vectorized_apply(diff_params, static_params, observations):
+            def apply_to_single(obs, idx):
+                single_diff, single_static = self._extract_single_genome_params(diff_params, static_params, idx)
+                return jit_apply_single(single_diff, single_static, obs)
+
+            return jax.vmap(apply_to_single, in_axes=(0, 0))(observations, jnp.arange(observations.shape[0]))
+
+        return jax.jit(vectorized_apply)
+
+    def _get_cached_apply_fn(self):
+        """Get or create cached JIT-compiled apply function."""
+        if not hasattr(self, "_cached_vectorized_apply"):
+            self._cached_vectorized_apply = self._create_vectorized_apply_fn()
+        return self._cached_vectorized_apply

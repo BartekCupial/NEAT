@@ -51,6 +51,7 @@ class BackpropSimManager(object):
         obs_normalizer: ObsNormalizer = None,
         use_for_loop: bool = False,
         logger: logging.Logger = None,
+        use_backprop: bool = True,
         backprop_steps: int = 10,
         learning_rate: float = 0.001,
         optimizer: str = "adam",
@@ -107,6 +108,7 @@ class BackpropSimManager(object):
                 "n_evaluations={}, #devices={}".format(self._n_evaluations, self._num_device)
             )
 
+        self._use_backprop = use_backprop
         self._backprop_steps = backprop_steps
         self._learning_rate = learning_rate
 
@@ -290,7 +292,9 @@ class BackpropSimManager(object):
             policy_state = split_states_for_pmap(policy_state)
 
         # Do the rollouts.
-        scores, all_obs, masks, final_states = rollout_func(task_state, policy_state, params, self.obs_params)
+        scores, all_obs, masks, final_states, params = self.rollout(
+            rollout_func, task_state, policy_state, params, self.obs_params
+        )
         if self._num_device > 1:
             all_obs = reshape_data_from_pmap(all_obs)
             masks = reshape_data_from_pmap(masks)
@@ -316,3 +320,31 @@ class BackpropSimManager(object):
             final_states = tree_map(lambda x: x.reshape((scores.shape[0], n_repeats, *x.shape[1:])), final_states)
 
         return scores, self._bd_summarize_fn(final_states)
+
+    def rollout(self, rollout_func, task_state, policy_state, params, obs_params):
+        if self._use_backprop:
+            diff_params, static_params = params
+            opt_state = self._optimizer.init(diff_params)
+
+            def model_loss_for_grad(model_params, task_state):
+                full_params = (model_params, static_params)
+                scores, all_obs, masks, final_states = rollout_func(
+                    task_state, policy_state, full_params, self.obs_params
+                )
+                return -scores.mean()
+
+            @jax.jit
+            def update(current_params, current_opt_state, task_state):
+                loss_value, grads = jax.value_and_grad(model_loss_for_grad)(current_params, task_state)
+                updates, new_opt_state = self._optimizer.update(grads, current_opt_state)
+                new_params = optax.apply_updates(current_params, updates)
+                return new_params, new_opt_state, loss_value
+
+            for epoch in range(self._backprop_steps):
+                diff_params, opt_state, loss = update(diff_params, opt_state, task_state)
+
+            params = (diff_params, static_params)
+
+        scores, all_obs, masks, final_states = rollout_func(task_state, policy_state, params, self.obs_params)
+
+        return scores, all_obs, masks, final_states, params
