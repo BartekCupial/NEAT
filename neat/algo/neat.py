@@ -637,6 +637,16 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         return self.policy.compile_population(self.neat_state.population)
 
     def tell(self, fitness: jnp.ndarray) -> None:
+        best_fitness = max(fitness)
+
+        def shift_fitness(rewards):
+            min_reward = jnp.min(rewards)
+            if min_reward < 0:
+                return rewards - min_reward
+            return rewards
+
+        fitness = shift_fitness(fitness)
+
         # Assign fitness scores (keep original fitness values for proper sharing)
         for genome, fit in zip(self.neat_state.population, fitness):
             genome.fitness = float(fit)
@@ -646,7 +656,7 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
         self.logger.info(
             f"Generation {self.neat_state.generation}: "
-            f"Best fitness: {max(fitness):.4f}, "
+            f"Best fitness: {best_fitness:.4f}, "
             f"Species count: {len(self.neat_state.species)}, "
             f"Avg stagnation: {np.mean([species.stagnation_counter for species in self.neat_state.species.values()]):.1f}"
         )
