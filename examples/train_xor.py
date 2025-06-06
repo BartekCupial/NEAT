@@ -10,7 +10,7 @@ import shutil
 from evojax import util
 
 from neat.algo.genome import ActivationFunction
-from neat.algo.neat import NEAT
+from neat.algo.neat import NEAT, CustomPopulationNEAT
 from neat.policy import NEATPolicy
 from neat.task import XOR
 from neat.trainer import NEATTrainer
@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument("--compatibility-threshold", type=float, default=1.0, help="NEAT compatibility threshold.")
     parser.add_argument("--survival-threshold", type=float, default=0.25, help="NEAT survival threshold.")
     parser.add_argument("--max-stagnation", type=int, default=10, help="Max stagnation for NEAT.")
-    parser.add_argument("--use_backprop", action="store_true", help="Use backpropagation for training.")
+    parser.add_argument("--use-backprop", action="store_true", help="Use backpropagation for training.")
     parser.add_argument("--backprop-steps", type=int, default=100, help="Number of backpropagation steps.")
     parser.add_argument("--learning-rate", type=float, default=0.01, help="Learning rate for backpropagation.")
     parser.add_argument("--l2-penalty", type=float, default=0.02, help="L2 penalty for backpropagation.")

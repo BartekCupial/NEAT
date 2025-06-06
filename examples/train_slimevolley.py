@@ -46,14 +46,15 @@ from evojax import util
 from evojax.task.slimevolley import SlimeVolley
 
 from neat.algo.genome import ActivationFunction
-from neat.algo.neat import NEAT
+from neat.algo.neat import NEAT, CustomPopulationNEAT
+from neat.networks.mlp import mlp
 from neat.policy import NEATPolicy
 from neat.trainer import NEATTrainer
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pop-size", type=int, default=150, help="NEAT population size.")
+    parser.add_argument("--pop-size", type=int, default=300, help="NEAT population size.")
     parser.add_argument("--num-tests", type=int, default=100, help="Number of test rollouts.")
     parser.add_argument("--n-repeats", type=int, default=16, help="Training repetitions.")
     parser.add_argument("--max-iter", type=int, default=500, help="Max training iterations.")
@@ -61,16 +62,16 @@ def parse_args():
     parser.add_argument("--log-interval", type=int, default=10, help="Logging interval.")
     parser.add_argument("--c1", type=float, default=1.0, help="NEAT c1 parameter.")
     parser.add_argument("--c2", type=float, default=1.0, help="NEAT c2 parameter.")
-    parser.add_argument("--c3", type=float, default=0.0, help="NEAT c3 parameter.")
+    parser.add_argument("--c3", type=float, default=0.4, help="NEAT c3 parameter.")
     parser.add_argument("--prob_add_node", type=float, default=0.15, help="Probability of adding a node.")
     parser.add_argument("--prob_add_connection", type=float, default=0.3, help="Probability of adding a connection.")
-    parser.add_argument("--compatibility-threshold", type=float, default=1.0, help="NEAT compatibility threshold.")
+    parser.add_argument("--compatibility-threshold", type=float, default=3.0, help="NEAT compatibility threshold.")
     parser.add_argument("--survival-threshold", type=float, default=0.25, help="NEAT survival threshold.")
-    parser.add_argument("--max-stagnation", type=int, default=10, help="Max stagnation for NEAT.")
-    parser.add_argument("--use_backprop", action="store_true", help="Use backpropagation for training.")
+    parser.add_argument("--max-stagnation", type=int, default=15, help="Max stagnation for NEAT.")
+    parser.add_argument("--use-backprop", action="store_true", help="Use backpropagation for training.")
     parser.add_argument("--backprop-steps", type=int, default=100, help="Number of backpropagation steps.")
-    parser.add_argument("--learning-rate", type=float, default=0.005, help="Learning rate for backpropagation.")
-    parser.add_argument("--l2-penalty", type=float, default=0.02, help="L2 penalty for backpropagation.")
+    parser.add_argument("--learning-rate", type=float, default=0.01, help="Learning rate for backpropagation.")
+    parser.add_argument("--l2-penalty", type=float, default=0.01, help="L2 penalty for backpropagation.")
     parser.add_argument(
         "--optimizer", type=str, default="adam", choices=["adam", "sgd", "rmsprop"], help="Optimizer type."
     )
@@ -94,6 +95,7 @@ def main(config):
     test_task = SlimeVolley(test=True, max_steps=max_steps)
     policy = NEATPolicy()
     solver = NEAT(
+        # population=[mlp([train_task.obs_shape[0], 64, train_task.act_shape[0]], key=jax.random.PRNGKey(i + config.seed)) for i in range(config.pop_size)],
         pop_size=config.pop_size,
         num_inputs=train_task.obs_shape[0],
         num_outputs=train_task.act_shape[0],

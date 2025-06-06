@@ -288,6 +288,49 @@ class BackpropSimManager(object):
         #   b1, b2, ..., bn  (individual 2 params)
         params = monkey_duplicate_params(params, n_repeats, self._ma_training)
 
+        # Do the rollouts.
+        if self._use_backprop and not test:
+            diff_params, static_params = params
+            opt_state = self._optimizer.init(diff_params)
+
+            def model_loss_for_grad(model_params, task_state, policy_state):
+                full_params = (model_params, static_params)
+                scores, all_obs, masks, final_states = rollout_func(
+                    task_state, policy_state, full_params, self.obs_params
+                )
+                if self._l2_penalty > 0.0:
+                    l2_loss = sum(jnp.sum(jnp.square(v)) for v in model_params.values())
+                    scores = scores - self._l2_penalty * l2_loss
+
+                return -jnp.mean(scores)
+
+            @jax.jit
+            def update(current_params, current_opt_state, task_state, policy_state):
+                loss_value, grads = jax.value_and_grad(model_loss_for_grad)(current_params, task_state, policy_state)
+                updates, new_opt_state = self._optimizer.update(grads, current_opt_state)
+                new_params = optax.apply_updates(current_params, updates)
+                return new_params, new_opt_state, loss_value
+
+            for epoch in range(self._backprop_steps + 1):
+                self._key, reset_keys = get_task_reset_keys(
+                    self._key, test, self._pop_size, self._n_evaluations, n_repeats, self._ma_training
+                )
+
+                # Reset the tasks and the policy.
+                task_state = task_reset_func(reset_keys)
+                policy_state = policy_reset_func(task_state)
+                if self._num_device > 1:
+                    params = split_params_for_pmap(params)
+                    task_state = split_states_for_pmap(task_state)
+                    policy_state = split_states_for_pmap(policy_state)
+
+                diff_params, opt_state, loss = update(diff_params, opt_state, task_state, policy_state)
+
+                # if epoch % 10 == 0:
+                #     self._logger.info(f"Epoch {epoch}/{self._backprop_steps}, Loss: {loss:.4f}")
+
+            params = (diff_params, static_params)
+
         self._key, reset_keys = get_task_reset_keys(
             self._key, test, self._pop_size, self._n_evaluations, n_repeats, self._ma_training
         )
@@ -300,10 +343,8 @@ class BackpropSimManager(object):
             task_state = split_states_for_pmap(task_state)
             policy_state = split_states_for_pmap(policy_state)
 
-        # Do the rollouts.
-        scores, all_obs, masks, final_states, params = self.rollout(
-            rollout_func, task_state, policy_state, params, test
-        )
+        scores, all_obs, masks, final_states = rollout_func(task_state, policy_state, params, self.obs_params)
+
         if self._num_device > 1:
             all_obs = reshape_data_from_pmap(all_obs)
             masks = reshape_data_from_pmap(masks)
@@ -329,37 +370,3 @@ class BackpropSimManager(object):
             final_states = tree_map(lambda x: x.reshape((scores.shape[0], n_repeats, *x.shape[1:])), final_states)
 
         return scores, self._bd_summarize_fn(final_states), params
-
-    def rollout(
-        self, rollout_func, task_state, policy_state, params, test
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, TaskState, Tuple[Dict, Dict]]:
-        if self._use_backprop and not test:
-            diff_params, static_params = params
-            opt_state = self._optimizer.init(diff_params)
-
-            def model_loss_for_grad(model_params, task_state):
-                full_params = (model_params, static_params)
-                scores, all_obs, masks, final_states = rollout_func(
-                    task_state, policy_state, full_params, self.obs_params
-                )
-                if self._l2_penalty > 0.0:
-                    l2_loss = sum(jnp.sum(jnp.square(v)) for v in model_params.values())
-                    scores = scores - self._l2_penalty * l2_loss
-
-                return -scores.mean()
-
-            @jax.jit
-            def update(current_params, current_opt_state, task_state):
-                loss_value, grads = jax.value_and_grad(model_loss_for_grad)(current_params, task_state)
-                updates, new_opt_state = self._optimizer.update(grads, current_opt_state)
-                new_params = optax.apply_updates(current_params, updates)
-                return new_params, new_opt_state, loss_value
-
-            for epoch in range(self._backprop_steps):
-                diff_params, opt_state, loss = update(diff_params, opt_state, task_state)
-
-            params = (diff_params, static_params)
-
-        scores, all_obs, masks, final_states = rollout_func(task_state, policy_state, params, self.obs_params)
-
-        return scores, all_obs, masks, final_states, params

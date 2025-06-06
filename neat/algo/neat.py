@@ -1,5 +1,6 @@
 import logging
 import math
+import random
 from collections import defaultdict
 from copy import deepcopy
 from typing import Dict, List, Tuple, Union
@@ -391,7 +392,10 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         new_node_id = self.neat_state.node_counter
         self.neat_state.node_counter += 1
         new_nodes = nodes.copy()
-        new_nodes[new_node_id] = NodeGene(new_node_id, NodeType.HIDDEN, activation_function=self.activation_function)
+
+        # Choose a random activation function for the new node
+        activation_fn = random.choice(list(ActivationFunction))
+        new_nodes[new_node_id] = NodeGene(new_node_id, NodeType.HIDDEN, activation_function=activation_fn)
 
         # Disable the old connection and create two new connections
         new_connections = connections.copy()
