@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument("--use_backprop", action="store_true", help="Use backpropagation for training.")
     parser.add_argument("--backprop-steps", type=int, default=100, help="Number of backpropagation steps.")
     parser.add_argument("--learning-rate", type=float, default=0.01, help="Learning rate for backpropagation.")
+    parser.add_argument("--l2-penalty", type=float, default=0.02, help="L2 penalty for backpropagation.")
     parser.add_argument(
         "--optimizer", type=str, default="adam", choices=["adam", "sgd", "rmsprop"], help="Optimizer type."
     )
@@ -89,6 +90,7 @@ def main(config):
         use_backprop=config.use_backprop,
         backprop_steps=config.backprop_steps,
         learning_rate=config.learning_rate,
+        l2_penalty=config.l2_penalty,
         optimizer=config.optimizer,
         logger=logger,
     )

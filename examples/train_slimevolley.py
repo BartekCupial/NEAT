@@ -64,12 +64,13 @@ def parse_args():
     parser.add_argument("--c3", type=float, default=0.0, help="NEAT c3 parameter.")
     parser.add_argument("--prob_add_node", type=float, default=0.15, help="Probability of adding a node.")
     parser.add_argument("--prob_add_connection", type=float, default=0.3, help="Probability of adding a connection.")
-    parser.add_argument("--compatibility-threshold", type=float, default=3.0, help="NEAT compatibility threshold.")
+    parser.add_argument("--compatibility-threshold", type=float, default=1.0, help="NEAT compatibility threshold.")
     parser.add_argument("--survival-threshold", type=float, default=0.25, help="NEAT survival threshold.")
     parser.add_argument("--max-stagnation", type=int, default=10, help="Max stagnation for NEAT.")
     parser.add_argument("--use_backprop", action="store_true", help="Use backpropagation for training.")
     parser.add_argument("--backprop-steps", type=int, default=100, help="Number of backpropagation steps.")
     parser.add_argument("--learning-rate", type=float, default=0.005, help="Learning rate for backpropagation.")
+    parser.add_argument("--l2-penalty", type=float, default=0.02, help="L2 penalty for backpropagation.")
     parser.add_argument(
         "--optimizer", type=str, default="adam", choices=["adam", "sgd", "rmsprop"], help="Optimizer type."
     )
@@ -95,7 +96,7 @@ def main(config):
     solver = NEAT(
         pop_size=config.pop_size,
         num_inputs=train_task.obs_shape[0],
-        num_outputs=train_task.act_shape,
+        num_outputs=train_task.act_shape[0],
         survival_threshold=config.survival_threshold,
         compatibility_threshold=config.compatibility_threshold,
         c1=config.c1,
@@ -125,6 +126,7 @@ def main(config):
         use_backprop=config.use_backprop,
         backprop_steps=config.backprop_steps,
         learning_rate=config.learning_rate,
+        l2_penalty=config.l2_penalty,
         optimizer=config.optimizer,
         logger=logger,
     )

@@ -61,6 +61,7 @@ class BackpropSimManager(object):
         use_backprop: bool = True,
         backprop_steps: int = 10,
         learning_rate: float = 0.001,
+        l2_penalty: float = 0.0,
         optimizer: str = "adam",
     ):
         """Initialization function.
@@ -118,6 +119,7 @@ class BackpropSimManager(object):
         self._use_backprop = use_backprop
         self._backprop_steps = backprop_steps
         self._learning_rate = learning_rate
+        self._l2_penalty = l2_penalty
 
         # Initialize optimizer
         if optimizer == "adam":
@@ -340,6 +342,10 @@ class BackpropSimManager(object):
                 scores, all_obs, masks, final_states = rollout_func(
                     task_state, policy_state, full_params, self.obs_params
                 )
+                if self._l2_penalty > 0.0:
+                    l2_loss = sum(jnp.sum(jnp.square(v)) for v in model_params.values())
+                    scores = scores - self._l2_penalty * l2_loss
+
                 return -scores.mean()
 
             @jax.jit

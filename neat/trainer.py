@@ -48,6 +48,7 @@ class NEATTrainer(Trainer):
         use_backprop: bool = True,
         backprop_steps=20,
         learning_rate=0.001,
+        l2_penalty=0.0,
         optimizer="adam",
     ):
         """Initialization.
@@ -73,6 +74,7 @@ class NEATTrainer(Trainer):
                 `current_iter`: int, `scores`: jnp.ndarray, 'stage': str = "train" | "test"
             backprop_steps - Number of gradient descent steps to perform.
             learning_rate - Learning rate for gradient descent.
+            l2_penalty - L2 penalty for the optimizer.
             optimizer - Optimizer type ('adam', 'sgd', 'rmsprop').
         """
 
@@ -111,6 +113,7 @@ class NEATTrainer(Trainer):
             use_backprop=use_backprop,
             backprop_steps=backprop_steps,
             learning_rate=learning_rate,
+            l2_penalty=l2_penalty,
             optimizer=optimizer,
         )
 
