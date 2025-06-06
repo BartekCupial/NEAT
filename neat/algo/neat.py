@@ -661,14 +661,6 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
             f"Avg stagnation: {np.mean([species.stagnation_counter for species in self.neat_state.species.values()]):.1f}"
         )
 
-    @property
-    def best_params(self) -> jnp.ndarray:
-        best_genome_idx = max(
-            [(genome, i) for i, genome in enumerate(self.neat_state.population)], key=lambda x: x[0].fitness
-        )[1]
-
-        return best_genome_idx
-
 
 class CustomPopulationNEAT(NEAT):
     def __init__(self, population, *args, **kwargs):
