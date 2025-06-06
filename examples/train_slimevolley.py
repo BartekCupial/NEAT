@@ -63,7 +63,7 @@ def parse_args():
     parser.add_argument("--c1", type=float, default=1.0, help="NEAT c1 parameter.")
     parser.add_argument("--c2", type=float, default=1.0, help="NEAT c2 parameter.")
     parser.add_argument("--c3", type=float, default=0.4, help="NEAT c3 parameter.")
-    parser.add_argument("--prob_add_node", type=float, default=0.15, help="Probability of adding a node.")
+    parser.add_argument("--prob_add_node", type=float, default=0.05, help="Probability of adding a node.")
     parser.add_argument("--prob_add_connection", type=float, default=0.3, help="Probability of adding a connection.")
     parser.add_argument("--compatibility-threshold", type=float, default=3.0, help="NEAT compatibility threshold.")
     parser.add_argument("--survival-threshold", type=float, default=0.25, help="NEAT survival threshold.")
