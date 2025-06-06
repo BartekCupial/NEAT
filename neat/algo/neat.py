@@ -663,9 +663,11 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
     @property
     def best_params(self) -> jnp.ndarray:
-        best_genome = max(self.neat_state.population, key=lambda genome: genome.fitness)
+        best_genome_idx = max(
+            [(genome, i) for i, genome in enumerate(self.neat_state.population)], key=lambda x: x[0].fitness
+        )[1]
 
-        return self.policy.compile_population([best_genome])
+        return best_genome_idx
 
 
 class CustomPopulationNEAT(NEAT):

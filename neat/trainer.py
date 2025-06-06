@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 import jax.numpy as jnp
 import numpy as np
@@ -12,6 +12,14 @@ from evojax.trainer import Trainer
 from evojax.util import create_logger, load_model, save_lattices, save_model
 
 from neat.sim_mgr import BackpropSimManager
+
+
+def index_params(params: Tuple[Dict, Dict], index: int) -> Tuple[Dict, Dict]:
+    """Index the parameters for a specific individual."""
+    diff_params, static_params = params
+    indexed_diff_params = {key: value[index] for key, value in diff_params.items()}
+    indexed_static_params = {key: value[index] for key, value in static_params.items()}
+    return indexed_diff_params, indexed_static_params
 
 
 class NEATTrainer(Trainer):
@@ -161,10 +169,8 @@ class NEATTrainer(Trainer):
                     self._log_scores_fn(i, scores, "train")
 
                 if i > 0 and i % self._test_interval == 0:
-                    best_params = self.solver.best_params
-                    if self._use_backprop:
-                        _, _, best_params = self.sim_mgr.eval_params(params=best_params, test=False)
-                    test_scores, _ = self.sim_mgr.eval_params(params=best_params, test=True)
+                    best_params = index_params(params, self.solver.best_params)
+                    test_scores, _, best_params = self.sim_mgr.eval_params(params=best_params, test=True)
                     self._logger.info(
                         "[TEST] Iter={0}, #tests={1}, max={2:.4f}, avg={3:.4f}, "
                         "min={4:.4f}, std={5:.4f}".format(
@@ -188,10 +194,8 @@ class NEATTrainer(Trainer):
                     best_score = max(best_score, mean_test_score)
 
             # Test and save the final model.
-            best_params = self.solver.best_params
-            if self._use_backprop:
-                _, _, best_params = self.sim_mgr.eval_params(params=best_params, test=False)
-            test_scores, _ = self.sim_mgr.eval_params(params=best_params, test=True)
+            best_params = index_params(params, self.solver.best_params)
+            test_scores, _, best_params = self.sim_mgr.eval_params(params=best_params, test=True)
             self._logger.info(
                 "[TEST] Iter={0}, #tests={1}, max={2:.4f}, avg={3:.4f}, "
                 "min={4:.4f}, std={5:.4f}".format(

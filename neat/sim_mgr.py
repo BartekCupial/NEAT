@@ -26,9 +26,16 @@ from evojax.task.base import TaskState, VectorizedTask
 from jax import random
 
 
-def monkey_duplicate_params(params: Tuple[Dict, Dict], repeats: int, ma_training: bool):
+def monkey_duplicate_params(
+    params: Tuple[Dict, Dict], repeats: int, ma_training: bool, batch: bool = False
+) -> Tuple[Dict, Dict]:
     """Enhanced duplicate_params that handles both arrays and dictionaries."""
     diff_params, static_params = params
+
+    if batch:
+        diff_params = {key: value[None, :] for key, value in diff_params.items()}
+        static_params = {key: value[None, :] for key, value in static_params.items()}
+
     diff_params = {key: duplicate_params(value, repeats, ma_training) for key, value in diff_params.items()}
     static_params = {key: duplicate_params(value, repeats, ma_training) for key, value in static_params.items()}
 
@@ -189,7 +196,7 @@ class BackpropSimManager(object):
         if self._num_device > 1:
             self._valid_rollout_fn = jax.jit(jax.pmap(self._valid_rollout_fn, in_axes=(0, 0, 0, None)))
 
-    def eval_params(self, params: jnp.ndarray, test: bool) -> Tuple[jnp.ndarray, TaskState]:
+    def eval_params(self, params: jnp.ndarray, test: bool) -> Tuple[jnp.ndarray, TaskState, Tuple[Dict, Dict]]:
         """Evaluate population parameters or test the best parameter.
 
         Args:
@@ -203,7 +210,7 @@ class BackpropSimManager(object):
         else:
             return self._scan_loop_eval(params, test)
 
-    def _for_loop_eval(self, params: jnp.ndarray, test: bool) -> Tuple[jnp.ndarray, TaskState]:
+    def _for_loop_eval(self, params: jnp.ndarray, test: bool) -> Tuple[jnp.ndarray, TaskState, Tuple[Dict, Dict]]:
         """Rollout using for loop (no multi-device or ma_training yet)."""
         policy_reset_func = self._policy_reset_fn
         policy_act_func = self._policy_act_fn
@@ -212,7 +219,7 @@ class BackpropSimManager(object):
             task_reset_func = self._valid_reset_fn
             task_step_func = self._valid_step_fn
             task_max_steps = self._valid_max_steps
-            params = monkey_duplicate_params(params[None, :], self._n_evaluations, False)
+            params = monkey_duplicate_params(params, self._n_evaluations, False, batch=True)
         else:
             n_repeats = self._n_repeats
             task_reset_func = self._train_reset_fn
@@ -249,14 +256,14 @@ class BackpropSimManager(object):
 
         return report_score(scores, n_repeats), task_state
 
-    def _scan_loop_eval(self, params: jnp.ndarray, test: bool) -> Tuple[jnp.ndarray, TaskState]:
+    def _scan_loop_eval(self, params: jnp.ndarray, test: bool) -> Tuple[jnp.ndarray, TaskState, Tuple[Dict, Dict]]:
         """Rollout using jax.lax.scan."""
         policy_reset_func = self._policy_reset_fn
         if test:
             n_repeats = self._test_n_repeats
             task_reset_func = self._valid_reset_fn
             rollout_func = self._valid_rollout_fn
-            params = monkey_duplicate_params(params[None, :], self._n_evaluations, False)
+            params = monkey_duplicate_params(params, self._n_evaluations, False, batch=True)
         else:
             n_repeats = self._n_repeats
             task_reset_func = self._train_reset_fn
@@ -319,7 +326,9 @@ class BackpropSimManager(object):
 
         return scores, self._bd_summarize_fn(final_states), params
 
-    def rollout(self, rollout_func, task_state, policy_state, params):
+    def rollout(
+        self, rollout_func, task_state, policy_state, params
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, TaskState, Tuple[Dict, Dict]]:
         if self._use_backprop:
             diff_params, static_params = params
             opt_state = self._optimizer.init(diff_params)
