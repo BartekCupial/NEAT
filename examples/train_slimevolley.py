@@ -57,7 +57,7 @@ def parse_args():
     parser.add_argument("--pop-size", type=int, default=300, help="NEAT population size.")
     parser.add_argument("--num-tests", type=int, default=100, help="Number of test rollouts.")
     parser.add_argument("--n-repeats", type=int, default=16, help="Training repetitions.")
-    parser.add_argument("--max-iter", type=int, default=500, help="Max training iterations.")
+    parser.add_argument("--max-iter", type=int, default=2000, help="Max training iterations.")
     parser.add_argument("--test-interval", type=int, default=50, help="Test interval.")
     parser.add_argument("--log-interval", type=int, default=10, help="Logging interval.")
     parser.add_argument("--c1", type=float, default=1.0, help="NEAT c1 parameter.")
@@ -107,7 +107,7 @@ def main(config):
         prob_add_node=config.prob_add_node,
         prob_add_connection=config.prob_add_connection,
         max_stagnation=config.max_stagnation,
-        activation_function=ActivationFunction.TANH,
+        activation_function=None,
         seed=config.seed,
         logger=logger,
     )

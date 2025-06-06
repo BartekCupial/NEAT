@@ -95,6 +95,17 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         # Initialize population
         self._initialize_population()
 
+    def _get_activation_function(self) -> ActivationFunction:
+        """Choose a random activation function for the new node."""
+        if self.activation_function is None:
+            self.rand_key, subkey = jax.random.split(self.rand_key)
+            idx = int(jax.random.uniform(subkey) * len(list(ActivationFunction)))
+            activation_fn = list(ActivationFunction)[idx]
+        else:
+            activation_fn = self.activation_function
+
+        return activation_fn
+
     def _initialize_population(self):
         """Initialize population with minimal networks."""
         population = []
@@ -106,12 +117,12 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
         # Input nodes
         for j in range(self.num_inputs):
-            nodes[j] = NodeGene(j, NodeType.INPUT)
+            nodes[j] = NodeGene(j, NodeType.INPUT, activation_function=self._get_activation_function())
 
         # Output nodes
         for j in range(self.num_outputs):
             node_id = self.num_inputs + j
-            nodes[node_id] = NodeGene(node_id, NodeType.OUTPUT)
+            nodes[node_id] = NodeGene(node_id, NodeType.OUTPUT, activation_function=self._get_activation_function())
 
         # Create initial connections (inputs directly to outputs)
         connections = {}
@@ -392,10 +403,9 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         new_node_id = self.neat_state.node_counter
         self.neat_state.node_counter += 1
         new_nodes = nodes.copy()
-
-        # Choose a random activation function for the new node
-        activation_fn = random.choice(list(ActivationFunction))
-        new_nodes[new_node_id] = NodeGene(new_node_id, NodeType.HIDDEN, activation_function=activation_fn)
+        new_nodes[new_node_id] = NodeGene(
+            new_node_id, NodeType.HIDDEN, activation_function=self._get_activation_function()
+        )
 
         # Disable the old connection and create two new connections
         new_connections = connections.copy()
