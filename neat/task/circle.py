@@ -8,6 +8,23 @@ from jax import random
 from neat.task.util import State, accuracy, loss_fn, sample_batch
 
 
+def generate_data(key, dataset_size: int) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    radius = 0.7
+
+    X = random.uniform(key, (dataset_size, 2), minval=-1, maxval=1)
+
+    x1, x2 = X[:, 0], X[:, 1]
+
+    # Circle labeling: points inside the circle of radius 0.5 are class 1 (orange), outside are class 0 (blue)
+    radius = 0.7
+    y = (x1**2 + x2**2 < radius**2).astype(int)
+
+    X_train = jnp.stack([x1, x2], axis=1)
+    y_train = y
+
+    return X_train, y_train
+
+
 class Circle(VectorizedTask):
     """Circle task."""
 
@@ -16,7 +33,6 @@ class Circle(VectorizedTask):
         batch_size: int = 10,
         dataset_size: int = 1000,
         test: bool = False,
-        radius=0.7,
     ):
         self.max_steps = 1
         self.obs_shape = tuple((2,))
@@ -25,15 +41,8 @@ class Circle(VectorizedTask):
         key = random.PRNGKey(0)
         train_key, test_key = random.split(key)
 
-        # Training data (fixed)
-        X_train = random.uniform(train_key, (dataset_size, 2), minval=-1, maxval=1)
-        self.train_labels = (X_train[:, 0] ** 2 * X_train[:, 1] ** 2 < radius**2).astype(int)
-        self.train_data = X_train
-
-        # Test data (different fixed set)
-        X_test = random.uniform(test_key, (dataset_size, 2), minval=-1, maxval=1)
-        self.test_labels = (X_test[:, 0] ** 2 * X_test[:, 1] ** 2 < radius**2).astype(int)
-        self.test_data = X_test
+        self.train_data, self.train_labels = generate_data(train_key, dataset_size)
+        self.test_data, self.test_labels = generate_data(test_key, dataset_size)
 
         def reset_fn(key):
             """Return fixed dataset, ignoring input key."""
