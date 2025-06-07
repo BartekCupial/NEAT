@@ -34,12 +34,7 @@ def get_task(config: DictConfig, test: bool = False):
     elif config.task.name == "spiral":
         return Spiral(batch_size=config.task.batch_size, dataset_size=config.task.dataset_size, test=test)
     elif config.task.name == "slimevolley":
-        return SlimeVolley(
-            batch_size=config.task.batch_size,
-            dataset_size=config.task.dataset_size,
-            max_steps=config.task.max_steps,
-            test=test,
-        )
+        return SlimeVolley(max_steps=config.task.max_steps, test=test)
     else:
         raise ValueError(f"Unknown task: {config.task}. Supported tasks: xor, circle, spiral.")
 
