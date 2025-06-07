@@ -89,7 +89,7 @@ def render_obs_with_ground_truth(obs, labels, actions):
         mew=2,
     )
 
-    plt.title("XOR Classification vs. Ground Truth")
+    plt.title("Classification vs. Ground Truth")
     plt.xlabel("x1")
     plt.ylabel("x2")
     plt.legend()
