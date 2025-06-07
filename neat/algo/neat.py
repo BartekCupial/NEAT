@@ -359,17 +359,27 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         potential_connections = []
         for in_node in node_ids:
             for out_node in node_ids:
-                if (
-                    nodes[in_node].node_type != NodeType.OUTPUT
-                    and nodes[out_node].node_type != NodeType.INPUT
-                    and in_node != out_node
-                    and (in_node, out_node) not in connection_graph.edges()
-                ):
-                    # Skip recurrent connections
-                    if nx.has_path(connection_graph, out_node, in_node):
-                        continue
+                # Rule 1: A node cannot connect to itself.
+                if in_node == out_node:
+                    continue
 
-                    potential_connections.append((in_node, out_node))
+                # Rule 2: The source of a connection cannot be an OUTPUT node.
+                if nodes[in_node].node_type == NodeType.OUTPUT:
+                    continue
+
+                # Rule 3: The destination of a connection cannot be an INPUT node.
+                if nodes[out_node].node_type == NodeType.INPUT:
+                    continue
+
+                # Rule 4: The connection must not already exist.
+                if (in_node, out_node) in connection_graph.edges():
+                    continue
+
+                # Rule 5: The connection must not create a cycle (recurrent connection).
+                if nx.has_path(connection_graph, out_node, in_node):
+                    continue
+
+                potential_connections.append((in_node, out_node))
 
         if potential_connections:
             # Select random connection
