@@ -23,6 +23,7 @@ from neat.algo.genome import (
     NodeType,
 )
 from neat.policy import NEATPolicy
+from neat.util import save_genome_img
 
 
 class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
@@ -46,6 +47,7 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         last_activation_function: ActivationFunction = ActivationFunction.IDENTITY,
         seed: int = 0,
         logger: logging.Logger = None,
+        log_dir: str = None,
     ):
         """Initialize NEAT algorithm.
 
@@ -71,6 +73,7 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
             self.logger = create_logger(name="NEAT")
         else:
             self.logger = logger
+        self.log_dir = log_dir
 
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
@@ -654,6 +657,11 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
     def tell(self, fitness: jnp.ndarray) -> None:
         best_fitness = max(fitness)
+        best_genome = self.neat_state.population[np.argmax(fitness)]
+        save_genome_img(
+            genome=best_genome,
+            file_path=f"{self.log_dir}/best_genome_{self.neat_state.generation}.png",
+        )
 
         def shift_fitness(rewards):
             min_reward = jnp.min(rewards)

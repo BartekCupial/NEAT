@@ -298,11 +298,26 @@ class BackpropSimManager(object):
                 scores, all_obs, masks, final_states = rollout_func(
                     task_state, policy_state, full_params, self.obs_params
                 )
-                if self._l2_penalty > 0.0:
-                    l2_loss = sum(jnp.sum(jnp.square(v)) for v in model_params.values())
-                    scores = scores - self._l2_penalty * l2_loss
+                # The primary objective is to maximize scores, so the loss is the negative mean of scores.
+                reward_loss = -jnp.mean(scores)
 
-                return -jnp.mean(scores)
+                # Add L2 penalty to the loss.
+                if self._l2_penalty > 0.0:
+                    # For each parameter tensor, sum the squares along all axes except the first (population) axis.
+                    per_param_l2 = jax.tree_util.tree_map(
+                        lambda p: jnp.sum(jnp.square(p), axis=range(1, p.ndim)), model_params
+                    )
+
+                    # Sum the L2 norms across all parameters (weights and biases) to get the total L2 norm.
+                    # The result is a vector of shape (pop_size,).
+                    l2_loss_per_network = sum(jax.tree_util.tree_leaves(per_param_l2))
+
+                    # The final L2 penalty is the mean of the per-network L2 losses.
+                    total_loss = reward_loss + self._l2_penalty * jnp.mean(l2_loss_per_network)
+                else:
+                    total_loss = reward_loss
+
+                return total_loss
 
             @jax.jit
             def update(current_params, current_opt_state, task_state, policy_state):
