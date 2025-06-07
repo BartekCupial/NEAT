@@ -2,6 +2,7 @@ import jax
 import pytest
 
 from neat.algo.neat import ActivationFunction, ConnectionGene, NEATGenome, NodeGene, NodeType
+from neat.networks.mlp import mlp
 
 
 @pytest.fixture
@@ -61,38 +62,9 @@ def genome2():
 @pytest.fixture
 def fully_connected_genome():
     """Create a fully connected genome for the XOR task."""
-    input_nodes = 2
-    hidden_nodes = 4
-    output_nodes = 2
-
-    nodes = {}
-    for i in range(1, input_nodes + 1):
-        nodes[i] = NodeGene(i, NodeType.INPUT, activation_function=ActivationFunction.TANH)
-
-    for i in range(input_nodes + 1, input_nodes + hidden_nodes + 1):
-        nodes[i] = NodeGene(i, NodeType.HIDDEN, activation_function=ActivationFunction.TANH)
-
-    for i in range(input_nodes + hidden_nodes + 1, input_nodes + hidden_nodes + output_nodes + 1):
-        nodes[i] = NodeGene(i, NodeType.OUTPUT)
-
-    connections = {}
-    # connections from input nodes to hidden nodes
-    conn_idx = 1
-    for i in range(1, input_nodes + 1):
-        for j in range(input_nodes + 1, input_nodes + hidden_nodes + 1):
-            weight = jax.random.uniform(jax.random.PRNGKey(conn_idx))
-            connections[conn_idx] = ConnectionGene(i, j, weight, True)
-            conn_idx += 1
-
-    # connections from hidden nodes to output nodes
-    for i in range(input_nodes + 1, input_nodes + hidden_nodes + 1):
-        for j in range(input_nodes + hidden_nodes + 1, input_nodes + hidden_nodes + output_nodes + 1):
-            weight = jax.random.uniform(jax.random.PRNGKey(conn_idx))
-            connections[conn_idx] = ConnectionGene(i, j, weight, True)
-            conn_idx += 1
-
-    return NEATGenome(
-        nodes=nodes,
-        connections=connections,
-        fitness=0.0,
+    return mlp(
+        layers=[2, 4, 2],
+        activation_function=ActivationFunction.TANH,
+        last_activation_function=ActivationFunction.IDENTITY,
+        key=jax.random.PRNGKey(0),
     )

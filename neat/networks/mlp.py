@@ -6,7 +6,12 @@ import numpy as np
 from neat.algo.genome import ActivationFunction, ConnectionGene, NEATGenome, NodeGene, NodeType
 
 
-def mlp(layers=[2, 4, 2], activation_function=ActivationFunction.TANH, key=jax.random.PRNGKey(0)):
+def mlp(
+    layers=[2, 4, 2],
+    activation_function=ActivationFunction.TANH,
+    last_activation_function=ActivationFunction.IDENTITY,
+    key=jax.random.PRNGKey(0),
+):
     """Create a fully connected genome for the XOR task."""
     node_types = [NodeType.INPUT]
     node_types.extend([NodeType.HIDDEN for _ in range(len(layers) - 2)])
@@ -14,9 +19,13 @@ def mlp(layers=[2, 4, 2], activation_function=ActivationFunction.TANH, key=jax.r
 
     nodes = {}
     node_idx = 0
-    for layer, node_type in zip(layers, node_types):
+    for e, (layer, node_type) in enumerate(zip(layers, node_types)):
         for _ in range(layer):
-            nodes[node_idx] = NodeGene(node_idx, node_type, activation_function=activation_function)
+            if e == len(layers) - 1:
+                act = last_activation_function
+            else:
+                act = activation_function
+            nodes[node_idx] = NodeGene(node_idx, node_type, activation_function=act)
             node_idx += 1
 
     node_cumsum = [0] + np.cumsum(np.array(layers)).tolist()
