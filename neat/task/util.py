@@ -103,3 +103,67 @@ def render_obs_with_ground_truth(obs, labels, actions):
     img_array = np.array(Image.open(buf))
 
     return Image.fromarray(img_array)
+
+
+def render_sailency_map(obs, labels, policy_action_fn):
+    plt.figure(figsize=(8, 8))
+
+    # Create a grid of points to cover the observation space
+    x_min, x_max = obs[:, 0].min() - 0.5, obs[:, 0].max() + 0.5
+    y_min, y_max = obs[:, 1].min() - 0.5, obs[:, 1].max() + 0.5
+    resolution = 150
+    xx, yy = np.meshgrid(np.linspace(x_min, x_max, resolution), np.linspace(y_min, y_max, resolution))
+
+    # Query the policy for each point on the grid to find the decision boundary
+    grid_points = jnp.c_[xx.ravel(), yy.ravel()]
+    # The provided policy_action_fn is used here to get predictions for the grid
+    grid_predictions = policy_action_fn(grid_points)
+
+    # Calculate logit difference to determine color intensity
+    logits_class_0 = grid_predictions[:, 0]
+    logits_class_1 = grid_predictions[:, 1]
+    diff_logits = np.abs(logits_class_1 - logits_class_0)
+
+    # Normalize the difference to a [0, 1] range for blending
+    min_diff, max_diff = diff_logits.min(), diff_logits.max()
+    norm_diff = (diff_logits - min_diff) / (max_diff - min_diff + 1e-8)
+
+    # Create an RGB color grid for plotting
+    orange = np.array([232 / 255, 175 / 255, 108 / 255])  # RGB for orange
+    blue = np.array([86 / 255, 146 / 255, 185 / 255])  # RGB for blue
+    white = np.array([1.0, 1.0, 1.0])
+
+    is_class_1_dominant = logits_class_1 > logits_class_0
+    base_colors = np.where(is_class_1_dominant[:, np.newaxis], blue, orange)
+
+    # Blend base color with white based on confidence (norm_diff)
+    # norm_diff is the weight of the base color. (1 - norm_diff) is the weight of white.
+    blend_factor = norm_diff[:, np.newaxis]
+    color_grid = blend_factor * base_colors + (1 - blend_factor) * white
+    color_grid_reshaped = color_grid.reshape((resolution, resolution, 3))
+
+    # Plot the color grid and the ground truth points
+    plt.imshow(color_grid_reshaped, extent=(x_min, x_max, y_min, y_max), origin="lower", alpha=0.8)
+
+    plt.plot(
+        obs[labels == 0, 0], obs[labels == 0, 1], "o", label="Class 0", ms=6, color="#E8AF6C", markeredgecolor="white"
+    )
+    plt.plot(
+        obs[labels == 1, 0], obs[labels == 1, 1], "o", label="Class 1", ms=6, color="#5692B9", markeredgecolor="white"
+    )
+
+    # Finalize the plot and convert to a PIL Image
+    plt.title("Two-Color Intensity of Model Output vs. Ground Truth")
+    plt.xlabel("x1")
+    plt.ylabel("x2")
+    plt.xlim(xx.min(), xx.max())
+    plt.ylim(yy.min(), yy.max())
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.5)
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", bbox_inches="tight")
+    plt.close()
+    buf.seek(0)
+
+    return Image.open(buf)

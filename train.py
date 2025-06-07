@@ -21,7 +21,7 @@ from neat.algo.neat import NEAT
 from neat.policy import NEATPolicy
 from neat.sim_mgr import monkey_duplicate_params
 from neat.task import XOR, Circle, Spiral
-from neat.task.util import render_obs_with_ground_truth
+from neat.task.util import render_sailency_map
 from neat.trainer import NEATTrainer, load_model
 
 
@@ -132,8 +132,20 @@ def main(config: DictConfig):
         if config.task.name == "slimevolley":
             screens.append(SlimeVolley.render(current_unbatched_state))
         else:
+
+            def policy_action_for_viz(obs):
+                dummy_policy_state = policy_reset_fn(task_state)
+                actions, _ = policy.get_actions(
+                    jax.tree_util.tree_map(lambda x: obs, task_state), best_params, dummy_policy_state
+                )
+                return actions
+
             screens.append(
-                render_obs_with_ground_truth(current_unbatched_state.obs, current_unbatched_state.labels, action[0])
+                render_sailency_map(
+                    current_unbatched_state.obs,
+                    current_unbatched_state.labels,
+                    policy_action_for_viz,
+                )
             )
 
     gif_file = os.path.join(output_dir, f"{config.task.name}.gif")
