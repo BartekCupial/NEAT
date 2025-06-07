@@ -212,6 +212,12 @@ class NEATPolicy(PolicyNetwork):
             lambda x: jax.nn.softmax(x),  # SOFTMAX (index 3)
             lambda x: x,  # IDENTITY (index 4)
             lambda x: 1.0 / (1.0 + jnp.exp(-4.9 * x)),  # MODIFIED_SIGMOID (index 5)
+            lambda x: jnp.sin(jnp.pi * x),  # 6: SIN - (index 6)
+            lambda x: jnp.cos(jnp.pi * x),  # 6: COS - (index 7)
+            lambda x: jnp.exp(-5.0 * x**2),  # 7: GAUSS - (index 8)
+            lambda x: x**2,  # 8: SQUARE - (index 9)
+            lambda x: jnp.abs(x),  # 9: ABS - (index 10)
+            lambda x: jnp.clip(x, -1.0, 1.0),  # 10: CLAMPED - (index 11)
         ]
 
         return jax.lax.switch(activation_fn, activation_funcs, x)

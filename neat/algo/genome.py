@@ -16,6 +16,12 @@ class ActivationFunction(enum.IntEnum):
     SOFTMAX = 3
     IDENTITY = 4
     MODIFIED_SIGMOID = 5
+    SIN = 6
+    COS = 7
+    GAUSS = 8
+    SQUARE = 9
+    ABS = 10
+    CLAMPED = 11
 
 
 class AggregationFunction(enum.IntEnum):

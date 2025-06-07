@@ -20,7 +20,7 @@ neat:
   compatibility_threshold: 3.0
   survival_threshold: 0.25
   max_stagnation: 15
-  activation_function: tanh   # relu, sigmoid, tanh, identity, softmax, modified_sigmoid (from neat paper)
+  activation_function: tanh   # relu, sigmoid, tanh, identity, softmax, sin, cos, square, gauss, abs, clamped, modified_sigmoid (from neat paper)
   last_activation_function: identity
 
 trainer:
