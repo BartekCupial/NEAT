@@ -70,6 +70,7 @@ def main(config):
         prob_add_connection=config.prob_add_connection,
         max_stagnation=config.max_stagnation,
         activation_function=ActivationFunction.MODIFIED_SIGMOID,
+        last_activation_function=ActivationFunction.MODIFIED_SIGMOID,
         logger=logger,
         seed=config.seed,
     )

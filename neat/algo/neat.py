@@ -43,6 +43,7 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         survival_threshold: float = 0.2,
         interspecies_mating_rate: float = 0.001,
         activation_function: ActivationFunction = ActivationFunction.IDENTITY,
+        last_activation_function: ActivationFunction = ActivationFunction.IDENTITY,
         seed: int = 0,
         logger: logging.Logger = None,
     ):
@@ -85,6 +86,7 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         self.interspecies_mating_rate = interspecies_mating_rate
 
         self.activation_function = activation_function
+        self.last_activation_function = last_activation_function
 
         self.rand_key = jax.random.PRNGKey(seed)
 
@@ -122,7 +124,7 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         # Output nodes
         for j in range(self.num_outputs):
             node_id = self.num_inputs + j
-            nodes[node_id] = NodeGene(node_id, NodeType.OUTPUT, activation_function=self._get_activation_function())
+            nodes[node_id] = NodeGene(node_id, NodeType.OUTPUT, activation_function=self.last_activation_function)
 
         # Create initial connections (inputs directly to outputs)
         connections = {}

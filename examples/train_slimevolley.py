@@ -54,7 +54,7 @@ from neat.trainer import NEATTrainer
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pop-size", type=int, default=300, help="NEAT population size.")
+    parser.add_argument("--pop-size", type=int, default=150, help="NEAT population size.")
     parser.add_argument("--num-tests", type=int, default=100, help="Number of test rollouts.")
     parser.add_argument("--n-repeats", type=int, default=16, help="Training repetitions.")
     parser.add_argument("--max-iter", type=int, default=2000, help="Max training iterations.")
@@ -63,9 +63,9 @@ def parse_args():
     parser.add_argument("--c1", type=float, default=1.0, help="NEAT c1 parameter.")
     parser.add_argument("--c2", type=float, default=1.0, help="NEAT c2 parameter.")
     parser.add_argument("--c3", type=float, default=0.4, help="NEAT c3 parameter.")
-    parser.add_argument("--prob_add_node", type=float, default=0.05, help="Probability of adding a node.")
+    parser.add_argument("--prob_add_node", type=float, default=0.15, help="Probability of adding a node.")
     parser.add_argument("--prob_add_connection", type=float, default=0.3, help="Probability of adding a connection.")
-    parser.add_argument("--compatibility-threshold", type=float, default=3.0, help="NEAT compatibility threshold.")
+    parser.add_argument("--compatibility-threshold", type=float, default=0.3, help="NEAT compatibility threshold.")
     parser.add_argument("--survival-threshold", type=float, default=0.25, help="NEAT survival threshold.")
     parser.add_argument("--max-stagnation", type=int, default=15, help="Max stagnation for NEAT.")
     parser.add_argument("--use-backprop", action="store_true", help="Use backpropagation for training.")
@@ -95,7 +95,6 @@ def main(config):
     test_task = SlimeVolley(test=True, max_steps=max_steps)
     policy = NEATPolicy()
     solver = NEAT(
-        # population=[mlp([train_task.obs_shape[0], 64, train_task.act_shape[0]], key=jax.random.PRNGKey(i + config.seed)) for i in range(config.pop_size)],
         pop_size=config.pop_size,
         num_inputs=train_task.obs_shape[0],
         num_outputs=train_task.act_shape[0],
@@ -107,7 +106,8 @@ def main(config):
         prob_add_node=config.prob_add_node,
         prob_add_connection=config.prob_add_connection,
         max_stagnation=config.max_stagnation,
-        activation_function=None,
+        activation_function=ActivationFunction.RELU,
+        last_activation_function=ActivationFunction.TANH,
         seed=config.seed,
         logger=logger,
     )
