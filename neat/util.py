@@ -94,7 +94,7 @@ def render_genome(genome: NEATGenome) -> np.ndarray:
                 pos[node] = (x_coords[i], y)
 
     plt.figure(figsize=(7, 7))
-    node_size = 500  # Define node size as a variable for consistency
+    node_size = 1000
 
     # Draw all nodes
     nx.draw_networkx_nodes(G, pos, node_color="lightgray", node_size=node_size)
@@ -103,11 +103,27 @@ def render_genome(genome: NEATGenome) -> np.ndarray:
     nx.draw_networkx_nodes(G, pos, nodelist=input_nodes, node_color="skyblue", node_size=node_size)
     nx.draw_networkx_nodes(G, pos, nodelist=output_nodes, node_color="salmon", node_size=node_size)
 
-    # Draw edges with node_size specified to avoid overlap
-    nx.draw_networkx_edges(G, pos, node_size=node_size, arrowstyle="->", arrowsize=10, width=1.5)[2]
+    # Draw edges
+    nx.draw_networkx_edges(G, pos, node_size=node_size, arrowstyle="->", arrowsize=10, width=1.5)
 
-    # Draw labels
-    nx.draw_networkx_labels(G, pos, font_color="black", font_weight="bold", font_size=8)
+    # Draw node ID labels
+    # nx.draw_networkx_labels(G, pos, font_color="black", font_weight="bold", font_size=8)
+
+    # Create and draw labels for activation functions on hidden and output nodes
+    activation_labels = {
+        node_id: data["activation"].name.lower() if data["activation"].name.lower() != "identity" else ""
+        for node_id, data in G.nodes(data=True)
+        if data["type"] != NodeType.INPUT
+    }
+
+    # Position activation labels below the node IDs
+    nx.draw_networkx_labels(
+        G,
+        pos,
+        labels=activation_labels,
+        font_color="black",
+        font_size=10,
+    )
 
     plt.tight_layout()
 
