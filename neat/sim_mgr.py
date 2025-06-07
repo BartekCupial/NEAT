@@ -62,6 +62,7 @@ class BackpropSimManager(object):
         backprop_steps: int = 10,
         learning_rate: float = 0.001,
         l2_penalty: float = 0.0,
+        complexity_penalty: float = 0.0,
         optimizer: str = "adam",
     ):
         """Initialization function.
@@ -79,6 +80,8 @@ class BackpropSimManager(object):
             logger - Logger.
             backprop_steps - Number of gradient descent steps to perform
             learning_rate - Learning rate for gradient descent
+            l2_penalty - L2 penalty for regularization
+            complexity_penalty - Complexity penalty for NEAT
             optimizer - Optimizer type ('adam', 'sgd', 'rmsprop')
         """
 
@@ -120,6 +123,7 @@ class BackpropSimManager(object):
         self._backprop_steps = backprop_steps
         self._learning_rate = learning_rate
         self._l2_penalty = l2_penalty
+        self._complexity_penalty = complexity_penalty
 
         # Initialize optimizer
         if optimizer == "adam":
@@ -168,6 +172,16 @@ class BackpropSimManager(object):
                 (),
                 max_steps,
             )
+
+            if self._complexity_penalty > 0.0:
+                # Calculate the complexity penalty based on the number of parameters.
+                diff_params, _ = params
+                weights = diff_params["weights"]
+                complexity_per_network = jnp.sum(weights > 0, axis=range(1, weights.ndim))
+
+                complexity_penalty = self._complexity_penalty * jnp.mean(complexity_per_network)
+                accumulated_rewards -= complexity_penalty
+
             return accumulated_rewards, obs_set, obs_mask, task_states
 
         self._policy_reset_fn = jax.jit(policy_net.reset)
@@ -299,7 +313,7 @@ class BackpropSimManager(object):
                     task_state, policy_state, full_params, self.obs_params
                 )
                 # The primary objective is to maximize scores, so the loss is the negative mean of scores.
-                reward_loss = -jnp.mean(scores)
+                loss = -jnp.mean(scores)
 
                 # Add L2 penalty to the loss.
                 if self._l2_penalty > 0.0:
@@ -313,11 +327,9 @@ class BackpropSimManager(object):
                     l2_loss_per_network = sum(jax.tree_util.tree_leaves(per_param_l2))
 
                     # The final L2 penalty is the mean of the per-network L2 losses.
-                    total_loss = reward_loss + self._l2_penalty * jnp.mean(l2_loss_per_network)
-                else:
-                    total_loss = reward_loss
+                    loss += self._l2_penalty * jnp.mean(l2_loss_per_network)
 
-                return total_loss
+                return loss
 
             @jax.jit
             def update(current_params, current_opt_state, task_state, policy_state):

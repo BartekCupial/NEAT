@@ -49,6 +49,7 @@ class NEATTrainer(Trainer):
         backprop_steps=20,
         learning_rate=0.001,
         l2_penalty=0.0,
+        complexity_penalty=0.0,
         optimizer="adam",
     ):
         """Initialization.
@@ -75,6 +76,7 @@ class NEATTrainer(Trainer):
             backprop_steps - Number of gradient descent steps to perform.
             learning_rate - Learning rate for gradient descent.
             l2_penalty - L2 penalty for the optimizer.
+            complexity_penalty - Complexity penalty for NEAT.
             optimizer - Optimizer type ('adam', 'sgd', 'rmsprop').
         """
 
@@ -114,6 +116,7 @@ class NEATTrainer(Trainer):
             backprop_steps=backprop_steps,
             learning_rate=learning_rate,
             l2_penalty=l2_penalty,
+            complexity_penalty=complexity_penalty,
             optimizer=optimizer,
         )
 
