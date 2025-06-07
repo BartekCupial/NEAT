@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument("--max-stagnation", type=int, default=15, help="Max stagnation for NEAT.")
     parser.add_argument("--use-backprop", action="store_true", help="Use backpropagation for training.")
     parser.add_argument("--backprop-steps", type=int, default=100, help="Number of backpropagation steps.")
-    parser.add_argument("--learning-rate", type=float, default=0.01, help="Learning rate for backpropagation.")
+    parser.add_argument("--learning-rate", type=float, default=0.1, help="Learning rate for backpropagation.")
     parser.add_argument("--l2-penalty", type=float, default=0.02, help="L2 penalty for backpropagation.")
     parser.add_argument(
         "--optimizer", type=str, default="adam", choices=["adam", "sgd", "rmsprop"], help="Optimizer type."
@@ -69,10 +69,11 @@ def main(config):
         prob_add_node=config.prob_add_node,
         prob_add_connection=config.prob_add_connection,
         max_stagnation=config.max_stagnation,
-        activation_function=ActivationFunction.MODIFIED_SIGMOID,
-        last_activation_function=ActivationFunction.MODIFIED_SIGMOID,
+        activation_function=ActivationFunction.TANH,
+        last_activation_function=ActivationFunction.IDENTITY,
         logger=logger,
         seed=config.seed,
+        log_dir=log_dir,
     )
 
     # Train.

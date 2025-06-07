@@ -110,6 +110,7 @@ def main(config):
         last_activation_function=ActivationFunction.TANH,
         seed=config.seed,
         logger=logger,
+        log_dir=log_dir,
     )
 
     # Train.
