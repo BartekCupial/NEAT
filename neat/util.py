@@ -14,7 +14,7 @@ def save_genome(genome: NEATGenome, file_path: str) -> None:
     """Save a genome to a file."""
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
 
-    with open(file_path, "w") as f:
+    with open(file_path, "wb") as f:
         pickle.dump(genome, f)
 
 
@@ -49,10 +49,7 @@ def render_genome(genome: NEATGenome) -> np.ndarray:
     try:
         sorted_nodes = list(nx.topological_sort(G))
     except nx.NetworkXUnfeasible:
-        # Handle cyclic graphs if they can occur, e.g., for recurrent networks
-        # For a simple feed-forward visualizer, we can error out or attempt a different layout
         print("Error: The graph has cycles and cannot be topologically sorted for layered layout.")
-        # Fallback to a simpler layout if needed
         pos = nx.spring_layout(G)
     else:
         # Assign layer depth for input nodes
@@ -68,12 +65,17 @@ def render_genome(genome: NEATGenome) -> np.ndarray:
                 else:
                     layer_depth[node] = max(layer_depth[p] for p in preds) + 1
 
-        max_depth = max(layer_depth.values())
+        max_depth = max(layer_depth.values()) if layer_depth else 0
 
+        # Assign output nodes to the final layer
         for node in output_nodes:
-            layer_depth[node] = max_depth
+            if max_depth > 0:  # Only override if there are hidden layers
+                layer_depth[node] = max_depth
 
-        # If all nodes are in one layer (e.g., inputs directly to outputs), prevent division by zero
+        # Recalculate max_depth in case output nodes changed it
+        max_depth = max(layer_depth.values()) if layer_depth else 0
+
+        # If all nodes are in one layer, prevent division by zero
         if max_depth == 0:
             max_depth = 1
 
@@ -81,38 +83,31 @@ def render_genome(genome: NEATGenome) -> np.ndarray:
         pos = {}
         nodes_by_layer = {}
         for node, depth in layer_depth.items():
-            # Normalize depth to be the y-coordinate
-            y = depth / max_depth
             if depth not in nodes_by_layer:
                 nodes_by_layer[depth] = []
             nodes_by_layer[depth].append(node)
 
         for depth, nodes_in_layer in nodes_by_layer.items():
             y = depth / max_depth
-            x_coords = np.linspace(0, 1, len(nodes_in_layer))
-            for i, node in enumerate(sorted(nodes_in_layer)):  # Sort for consistent ordering
+            x_coords = np.linspace(0.05, 0.95, len(nodes_in_layer)) if len(nodes_in_layer) > 1 else [0.5]
+            for i, node in enumerate(sorted(nodes_in_layer)):
                 pos[node] = (x_coords[i], y)
 
-    # Create a list of node colors
-    color_map = np.array(["black" for _ in range(len(G.nodes))])
-
-    color_map[input_nodes] = "blue"
-    color_map[output_nodes] = "red"
-
     plt.figure(figsize=(7, 7))
+    node_size = 500  # Define node size as a variable for consistency
 
     # Draw all nodes
-    nx.draw_networkx_nodes(G, pos, node_color="black", node_size=150)
+    nx.draw_networkx_nodes(G, pos, node_color="lightgray", node_size=node_size)
 
-    # # Draw target and current nodes
-    nx.draw_networkx_nodes(G, pos, nodelist=input_nodes, node_color="blue", node_size=150)
-    nx.draw_networkx_nodes(G, pos, nodelist=output_nodes, node_color="red", node_size=150)
+    # Draw input and output nodes
+    nx.draw_networkx_nodes(G, pos, nodelist=input_nodes, node_color="skyblue", node_size=node_size)
+    nx.draw_networkx_nodes(G, pos, nodelist=output_nodes, node_color="salmon", node_size=node_size)
 
-    # Draw edges
-    nx.draw_networkx_edges(G, pos)
+    # Draw edges with node_size specified to avoid overlap
+    nx.draw_networkx_edges(G, pos, node_size=node_size, arrowstyle="->", arrowsize=10, width=1.5)[2]
 
     # Draw labels
-    nx.draw_networkx_labels(G, pos, font_color="white", font_weight="bold", font_size=10)
+    nx.draw_networkx_labels(G, pos, font_color="black", font_weight="bold", font_size=8)
 
     plt.tight_layout()
 
