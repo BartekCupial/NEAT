@@ -1,3 +1,4 @@
+import networkx as nx
 import pytest
 
 from neat.algo.neat import NEAT, CustomPopulationNEAT, NEATGenome
@@ -43,6 +44,15 @@ class TestNEAT(object):
     def test_mutate_add_connection(self, neat_instance: NEAT, genome1: NEATGenome):
         new_connections = neat_instance._mutate_add_connection(genome1.nodes, genome1.connections)
         assert len(new_connections) == len(genome1.connections) + 1
+
+    def test_mutate_add_connection_logic(self, neat_instance: NEAT, genome2: NEATGenome):
+        connections = genome2.connections
+        connection_graph = neat_instance._build_graph(connections)
+
+        in_node = 6
+        out_node = 5
+
+        assert nx.has_path(connection_graph, out_node, in_node)
 
     def test_mutate_add_node(self, neat_instance: NEAT, genome1: NEATGenome):
         new_nodes, new_connections = neat_instance._mutate_add_node(genome1.nodes, genome1.connections)
