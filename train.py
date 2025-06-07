@@ -18,8 +18,10 @@ from omegaconf import DictConfig
 from neat.algo.genome import ActivationFunction
 from neat.algo.neat import NEAT
 from neat.policy import NEATPolicy
+from neat.sim_mgr import monkey_duplicate_params
 from neat.task import XOR, Circle, Spiral
-from neat.trainer import NEATTrainer
+from neat.task.util import render_obs_with_ground_truth
+from neat.trainer import NEATTrainer, load_model
 
 
 def get_task(config: DictConfig, test: bool = False):
@@ -112,7 +114,9 @@ def main(config: DictConfig):
     policy_reset_fn = jax.jit(policy.reset)
     step_fn = jax.jit(test_task.step)
     action_fn = jax.jit(policy.get_actions)
-    best_params = trainer.solver.best_params[None, :]
+
+    best_params, obs_params = load_model(model_dir=output_dir)
+    best_params = monkey_duplicate_params(best_params, 1, False, True)
     key = jax.random.PRNGKey(0)[None, :]
 
     task_state = task_reset_fn(key)
@@ -124,7 +128,12 @@ def main(config: DictConfig):
 
         # Extract the single state from the batched task_state
         current_unbatched_state = jax.tree_util.tree_map(lambda x: x[0], task_state)
-        screens.append(SlimeVolley.render(current_unbatched_state))
+        if config.task.name == "slimevolley":
+            screens.append(SlimeVolley.render(current_unbatched_state))
+        else:
+            screens.append(
+                render_obs_with_ground_truth(current_unbatched_state.obs, current_unbatched_state.labels, action[0])
+            )
 
     gif_file = os.path.join(output_dir, f"{config.task.name}.gif")
     screens[0].save(gif_file, save_all=True, append_images=screens[1:], duration=40, loop=0)
