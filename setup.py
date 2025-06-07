@@ -35,6 +35,7 @@ setup(
     install_requires=[
         "opencv-python",
         "networkx",
+        "hydra-core",
     ],
     extras_require={
         # some tests require Atari and Mujoco so let's make sure dev environment has that

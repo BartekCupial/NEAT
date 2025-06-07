@@ -8,14 +8,15 @@ from jax import random
 from neat.task.util import State, accuracy, loss_fn, sample_batch
 
 
-class XOR(VectorizedTask):
-    """XOR task."""
+class Circle(VectorizedTask):
+    """Circle task."""
 
     def __init__(
         self,
         batch_size: int = 10,
         dataset_size: int = 1000,
         test: bool = False,
+        radius=0.7,
     ):
         self.max_steps = 1
         self.obs_shape = tuple((2,))
@@ -26,12 +27,12 @@ class XOR(VectorizedTask):
 
         # Training data (fixed)
         X_train = random.uniform(train_key, (dataset_size, 2), minval=-1, maxval=1)
-        self.train_labels = (X_train[:, 0] * X_train[:, 1] > 0).astype(int)
+        self.train_labels = (X_train[:, 0] ** 2 * X_train[:, 1] ** 2 < radius**2).astype(int)
         self.train_data = X_train
 
         # Test data (different fixed set)
         X_test = random.uniform(test_key, (dataset_size, 2), minval=-1, maxval=1)
-        self.test_labels = (X_test[:, 0] * X_test[:, 1] > 0).astype(int)
+        self.test_labels = (X_test[:, 0] ** 2 * X_test[:, 1] ** 2 < radius**2).astype(int)
         self.test_data = X_test
 
         def reset_fn(key):

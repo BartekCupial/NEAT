@@ -36,7 +36,7 @@ def parse_args():
     parser.add_argument("--backprop-steps", type=int, default=100, help="Number of backpropagation steps.")
     parser.add_argument("--learning-rate", type=float, default=0.1, help="Learning rate for backpropagation.")
     parser.add_argument("--l2-penalty", type=float, default=0.001, help="L2 penalty for backpropagation.")
-    parser.add_argument("--complexity-penalty", type=float, default=0.1, help="Node penalty for NEAT.")
+    parser.add_argument("--complexity-penalty", type=float, default=0.001, help="Node penalty for NEAT.")
     parser.add_argument(
         "--optimizer", type=str, default="adam", choices=["adam", "sgd", "rmsprop"], help="Optimizer type."
     )

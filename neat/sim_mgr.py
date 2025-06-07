@@ -175,9 +175,12 @@ class BackpropSimManager(object):
 
             if self._complexity_penalty > 0.0:
                 # Calculate the complexity penalty based on the number of parameters.
-                diff_params, _ = params
+                diff_params, static_params = params
                 weights = diff_params["weights"]
-                complexity_per_network = jnp.sum(weights > 0, axis=range(1, weights.ndim))
+                # define complexity as the number of connections multiplied by the number of nodes
+                complexity_per_network = jnp.sum(weights > 0, axis=range(1, weights.ndim)) * jnp.max(
+                    static_params["output_indices"], axis=1
+                )
 
                 complexity_penalty = self._complexity_penalty * jnp.mean(complexity_per_network)
                 accumulated_rewards -= complexity_penalty
