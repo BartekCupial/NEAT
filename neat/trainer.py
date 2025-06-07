@@ -196,7 +196,7 @@ class NEATTrainer(Trainer):
 
                 if i > 0 and i % self._test_interval == 0:
                     best_params = index_params(trained_params, jnp.argmax(scores))
-                    test_scores, _, best_params = self.sim_mgr.eval_params(params=best_params, test=True)
+                    test_scores, _, _ = self.sim_mgr.eval_params(params=best_params, test=True)
                     self._logger.info(
                         "[TEST] Iter={0}, #tests={1}, max={2:.4f}, avg={3:.4f}, "
                         "min={4:.4f}, std={5:.4f}".format(
@@ -221,7 +221,7 @@ class NEATTrainer(Trainer):
 
             # Test and save the final model.
             best_params = index_params(trained_params, jnp.argmax(scores))
-            test_scores, _, best_params = self.sim_mgr.eval_params(params=best_params, test=True)
+            test_scores, _, _ = self.sim_mgr.eval_params(params=best_params, test=True)
             self._logger.info(
                 "[TEST] Iter={0}, #tests={1}, max={2:.4f}, avg={3:.4f}, "
                 "min={4:.4f}, std={5:.4f}".format(
@@ -252,4 +252,4 @@ class NEATTrainer(Trainer):
                 )
             self._logger.info("Training done, best_score={0:.4f}".format(best_score))
 
-            return best_score
+            return best_score, best_params
