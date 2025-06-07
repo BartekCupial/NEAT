@@ -2,6 +2,7 @@ import logging
 import math
 import random
 from collections import defaultdict
+from collections.abc import Sequence
 from copy import deepcopy
 from typing import Dict, List, Tuple, Union
 
@@ -91,11 +92,15 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         # Convert activation function strings to enum if needed
         if isinstance(activation_function, str):
             self.activation_function = ActivationFunction[activation_function.upper()]
+        elif isinstance(activation_function, Sequence):
+            self.activation_function = [ActivationFunction[fn.upper()] for fn in activation_function]
         else:
             self.activation_function = activation_function
 
         if isinstance(last_activation_function, str):
             self.last_activation_function = ActivationFunction[last_activation_function.upper()]
+        elif isinstance(activation_function, Sequence):
+            self.last_activation_function = [ActivationFunction[fn.upper()] for fn in activation_function]
         else:
             self.last_activation_function = last_activation_function
 
@@ -108,14 +113,16 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         # Initialize population
         self._initialize_population()
 
-    def _get_activation_function(self) -> ActivationFunction:
+    def _get_activation_function(self, fn) -> ActivationFunction:
         """Choose a random activation function for the new node."""
-        if self.activation_function is None:
+        if isinstance(fn, Sequence):
+            # If a sequence of functions is provided, choose one randomly
             self.rand_key, subkey = jax.random.split(self.rand_key)
-            idx = int(jax.random.uniform(subkey) * len(list(ActivationFunction)))
-            activation_fn = list(ActivationFunction)[idx]
+            act_idx = int(jax.random.uniform(subkey) * len(fn))
+            activation_fn = fn[act_idx]
         else:
-            activation_fn = self.activation_function
+            # Otherwise, use the provided function directly
+            activation_fn = fn
 
         return activation_fn
 
@@ -130,12 +137,18 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
 
         # Input nodes
         for j in range(self.num_inputs):
-            nodes[j] = NodeGene(j, NodeType.INPUT, activation_function=self._get_activation_function())
+            nodes[j] = NodeGene(
+                j, NodeType.INPUT, activation_function=self._get_activation_function(self.activation_function)
+            )
 
         # Output nodes
         for j in range(self.num_outputs):
             node_id = self.num_inputs + j
-            nodes[node_id] = NodeGene(node_id, NodeType.OUTPUT, activation_function=self.last_activation_function)
+            nodes[node_id] = NodeGene(
+                node_id,
+                NodeType.OUTPUT,
+                activation_function=self._get_activation_function(self.last_activation_function),
+            )
 
         # Create initial connections (inputs directly to outputs)
         connections = {}
@@ -427,7 +440,7 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         self.neat_state.node_counter += 1
         new_nodes = nodes.copy()
         new_nodes[new_node_id] = NodeGene(
-            new_node_id, NodeType.HIDDEN, activation_function=self._get_activation_function()
+            new_node_id, NodeType.HIDDEN, activation_function=self._get_activation_function(self.activation_function)
         )
 
         # Disable the old connection and create two new connections
