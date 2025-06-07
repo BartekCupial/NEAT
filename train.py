@@ -21,7 +21,7 @@ from neat.algo.neat import NEAT
 from neat.policy import NEATPolicy
 from neat.sim_mgr import monkey_duplicate_params
 from neat.task import XOR, Circle, Spiral
-from neat.task.util import render_sailency_map
+from neat.task.util import render_saliency_map
 from neat.trainer import NEATTrainer, load_model
 
 
@@ -48,6 +48,11 @@ def main(config: DictConfig):
 
     # Create the directory if it doesn't exist
     Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    # save the configuration to a file
+    config_file = os.path.join(output_dir, "config.yaml")
+    with open(config_file, "w") as f:
+        OmegaConf.save(config, f)
 
     logger = util.create_logger(name=config.task.name, log_dir=output_dir, debug=config.eval.debug)
     logger.info(json.dumps(OmegaConf.to_container(config, resolve=True), indent=4))
@@ -136,10 +141,11 @@ def main(config: DictConfig):
                 return actions
 
             screens.append(
-                render_sailency_map(
+                render_saliency_map(
                     current_unbatched_state.obs,
                     current_unbatched_state.labels,
                     policy_action_for_viz,
+                    blending_aggressiveness=0.5,
                 )
             )
 

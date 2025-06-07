@@ -105,7 +105,7 @@ def render_obs_with_ground_truth(obs, labels, actions):
     return Image.fromarray(img_array)
 
 
-def render_sailency_map(obs, labels, policy_action_fn):
+def render_saliency_map(obs, labels, policy_action_fn, blending_aggressiveness=0.5):
     plt.figure(figsize=(8, 8))
 
     # Create a grid of points to cover the observation space
@@ -127,6 +127,10 @@ def render_sailency_map(obs, labels, policy_action_fn):
     # Normalize the difference to a [0, 1] range for blending
     min_diff, max_diff = diff_logits.min(), diff_logits.max()
     norm_diff = (diff_logits - min_diff) / (max_diff - min_diff + 1e-8)
+
+    # Apply the aggressiveness factor to the blend ratio
+    # This non-linear adjustment increases color contrast[3]
+    blend_factor = (norm_diff**blending_aggressiveness)[:, np.newaxis]
 
     # Create an RGB color grid for plotting
     orange = np.array([232 / 255, 175 / 255, 108 / 255])  # RGB for orange
