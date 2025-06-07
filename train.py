@@ -3,6 +3,7 @@
 Example command to run this script: `python train_xor.py --gpu-id=0`
 """
 
+import json
 import os
 import shutil
 from datetime import datetime
@@ -13,7 +14,7 @@ import jax
 import jax.tree_util
 from evojax import util
 from evojax.task.slimevolley import SlimeVolley
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from neat.algo.genome import ActivationFunction
 from neat.algo.neat import NEAT
@@ -54,7 +55,7 @@ def main(config: DictConfig):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     logger = util.create_logger(name=config.task.name, log_dir=output_dir, debug=config.eval.debug)
-    logger.info(f"EvoJAX {config.task} Demo")
+    logger.info(json.dumps(OmegaConf.to_container(config, resolve=True), indent=4))
     logger.info("=" * 30)
 
     policy = NEATPolicy()
