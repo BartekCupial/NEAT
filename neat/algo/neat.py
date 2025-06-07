@@ -43,8 +43,8 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         max_stagnation: int = 15,
         survival_threshold: float = 0.2,
         interspecies_mating_rate: float = 0.001,
-        activation_function: ActivationFunction = ActivationFunction.IDENTITY,
-        last_activation_function: ActivationFunction = ActivationFunction.IDENTITY,
+        activation_function: str = "tanh",
+        last_activation_function: str = "identity",
         seed: int = 0,
         logger: logging.Logger = None,
         log_dir: str = None,
@@ -88,8 +88,16 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         self.survival_threshold = survival_threshold
         self.interspecies_mating_rate = interspecies_mating_rate
 
-        self.activation_function = activation_function
-        self.last_activation_function = last_activation_function
+        # Convert activation function strings to enum if needed
+        if isinstance(activation_function, str):
+            self.activation_function = ActivationFunction[activation_function.upper()]
+        else:
+            self.activation_function = activation_function
+
+        if isinstance(last_activation_function, str):
+            self.last_activation_function = ActivationFunction[last_activation_function.upper()]
+        else:
+            self.last_activation_function = last_activation_function
 
         self.rand_key = jax.random.PRNGKey(seed)
 
