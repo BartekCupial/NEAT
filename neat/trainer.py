@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from typing import Callable, Dict, Optional, Tuple
 
@@ -9,7 +10,7 @@ from evojax.obs_norm import ObsNormalizer
 from evojax.policy import PolicyNetwork
 from evojax.task.base import VectorizedTask
 from evojax.trainer import Trainer
-from evojax.util import create_logger, load_model, save_lattices, save_model
+from evojax.util import create_logger, save_lattices, save_model
 
 from neat.sim_mgr import BackpropSimManager
 
@@ -20,6 +21,25 @@ def index_params(params: Tuple[Dict, Dict], index: int) -> Tuple[Dict, Dict]:
     indexed_diff_params = {key: value[index] for key, value in diff_params.items()}
     indexed_static_params = {key: value[index] for key, value in static_params.items()}
     return indexed_diff_params, indexed_static_params
+
+
+def load_model(model_dir: str) -> Tuple[np.ndarray, np.ndarray]:
+    """Load policy parameters from the specified directory.
+
+    Args:
+        model_dir - Directory to load the model from.
+    Returns:
+        A pair of parameters, the shapes of which are
+        (param_size,) and (1 + 2 * obs_params_size,).
+    """
+
+    model_file = os.path.join(model_dir, "model.npz")
+    if not os.path.exists(model_file):
+        raise ValueError("Model file {} does not exist.")
+    with np.load(model_file, allow_pickle=True) as data:
+        params = data["params"]
+        obs_params = data["obs_params"]
+    return params, obs_params
 
 
 class NEATTrainer(Trainer):

@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 
 import hydra
+import jax
+import jax.tree_util
 from evojax import util
 from evojax.task.slimevolley import SlimeVolley
 from omegaconf import DictConfig
@@ -84,8 +86,8 @@ def main(config: DictConfig):
         max_iter=config.trainer.max_iter,
         log_interval=config.trainer.log_interval,
         test_interval=config.trainer.test_interval,
-        n_repeats=1,
-        n_evaluations=1,
+        n_repeats=config.trainer.n_repeats,
+        n_evaluations=config.trainer.n_evaluations,
         seed=config.eval.seed,
         log_dir=output_dir,
         use_backprop=config.trainer.use_backprop,
@@ -104,6 +106,29 @@ def main(config: DictConfig):
     shutil.copy(src_file, tar_file)
     trainer.model_dir = output_dir
     trainer.run(demo_mode=True)
+
+    # Visualize the policy.
+    task_reset_fn = jax.jit(test_task.reset)
+    policy_reset_fn = jax.jit(policy.reset)
+    step_fn = jax.jit(test_task.step)
+    action_fn = jax.jit(policy.get_actions)
+    best_params = trainer.solver.best_params[None, :]
+    key = jax.random.PRNGKey(0)[None, :]
+
+    task_state = task_reset_fn(key)
+    policy_state = policy_reset_fn(task_state)
+    screens = []
+    for _ in range(test_task.max_steps):
+        action, policy_state = action_fn(task_state, best_params, policy_state)
+        task_state, reward, done = step_fn(task_state, action)
+
+        # Extract the single state from the batched task_state
+        current_unbatched_state = jax.tree_util.tree_map(lambda x: x[0], task_state)
+        screens.append(SlimeVolley.render(current_unbatched_state))
+
+    gif_file = os.path.join(output_dir, f"{config.task.name}.gif")
+    screens[0].save(gif_file, save_all=True, append_images=screens[1:], duration=40, loop=0)
+    logger.info("GIF saved to {}.".format(gif_file))
 
 
 if __name__ == "__main__":
