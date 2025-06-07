@@ -70,6 +70,9 @@ def render_genome(genome: NEATGenome) -> np.ndarray:
 
         max_depth = max(layer_depth.values())
 
+        for node in output_nodes:
+            layer_depth[node] = max_depth
+
         # If all nodes are in one layer (e.g., inputs directly to outputs), prevent division by zero
         if max_depth == 0:
             max_depth = 1
