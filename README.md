@@ -108,7 +108,7 @@ The Spiral classification task was more challenging due to its highly non-linear
 </div>
 
 ### SlimeVolley
-TODO
+After my initial attempts to train a Slime Volley agent using backpropagation and a combined backprop-NEAT approach failed, I only have found success by using the NEAT algorithm exclusively, without any backpropagation.
 
 <div style="display: flex; gap: 10px;">
     <img src="assets/slimevolley.gif" alt="XOR Training Progress" width="45%">
