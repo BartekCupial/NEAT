@@ -297,9 +297,9 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
                 enabled = recessive.connections[innov].enabled
 
             # If either parent has disabled gene, 75% chance it stays disabled
-            if not dominant.connections[innov].enabled or not recessive.connections[innov].enabled:
-                if jax.random.uniform(init_key) < 0.75:
-                    enabled = False
+            # if not dominant.connections[innov].enabled or not recessive.connections[innov].enabled:
+            #     if jax.random.uniform(init_key) < 0.75:
+            #         enabled = False
 
             offspring_connections[innov] = ConnectionGene(
                 in_node_id=dominant.connections[innov].in_node_id,
@@ -309,17 +309,17 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
             )
 
         for innov in excess.union(disjoint):
-            if parent1.fitness != parent2.fitness:
-                # Excess and disjoint genes are inherited from the dominant parent
-                if innov in dominant.connections:
-                    offspring_connections[innov] = deepcopy(dominant.connections[innov])
-            else:
-                # All disjoint and excess genes from both parents are included in the offspring
-                if innov in dominant.connections:
-                    offspring_connections[innov] = deepcopy(dominant.connections[innov])
+            # if parent1.fitness != parent2.fitness:
+            # Excess and disjoint genes are inherited from the dominant parent
+            if innov in dominant.connections:
+                offspring_connections[innov] = deepcopy(dominant.connections[innov])
+            # else:
+            #     # All disjoint and excess genes from both parents are included in the offspring
+            #     if innov in dominant.connections:
+            #         offspring_connections[innov] = deepcopy(dominant.connections[innov])
 
-                elif innov in recessive.connections:
-                    offspring_connections[innov] = deepcopy(recessive.connections[innov])
+            #     elif innov in recessive.connections:
+            #         offspring_connections[innov] = deepcopy(recessive.connections[innov])
 
         # Create nodes from the connections
         for connection in offspring_connections.values():
