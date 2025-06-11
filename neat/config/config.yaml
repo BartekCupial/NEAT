@@ -22,6 +22,8 @@ neat:
   max_stagnation: 15
   activation_function: tanh   # relu, sigmoid, tanh, identity, softmax, sin, cos, square, gauss, abs, clamped, modified_sigmoid (from neat paper)
   last_activation_function: identity
+  speciate_algorithm: classic
+  num_species: 5
 
 trainer:
   n_repeats: 1

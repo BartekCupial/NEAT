@@ -44,6 +44,8 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         max_stagnation: int = 15,
         survival_threshold: float = 0.2,
         interspecies_mating_rate: float = 0.001,
+        speciate_algorithm: str = "kmedoids",  # "kmedoids" or "classic"
+        num_species: int = 5,
         activation_function: str = "tanh",
         last_activation_function: str = "identity",
         seed: int = 0,
@@ -65,6 +67,10 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
             max_stagnation: Maximum generations without improvement before species elimination
             survival_threshold: Fraction of each species allowed to reproduce
             interspecies_mating_rate: Rate of interspecies mating
+            speciate_algorithm: Algorithm for speciation ("kmedoids" or "classic")
+            num_species: Number of species to maintain (for k-medoids)
+            activation_function: Activation function for hidden nodes
+            last_activation_function: Activation function for output nodes
             seed: Random seed
             logger: Logger instance
         """
@@ -88,6 +94,8 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         self.max_stagnation = max_stagnation
         self.survival_threshold = survival_threshold
         self.interspecies_mating_rate = interspecies_mating_rate
+        self.speciate_algorithm = speciate_algorithm
+        self.num_species = num_species
 
         # Convert activation function strings to enum if needed
         if isinstance(activation_function, str):
@@ -656,6 +664,70 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         assert sum(len(species.species_indices) for species in self.neat_state.species.values()) == self.pop_size
         assert len(self.neat_state.species) > 0, "There must be at least one species."
 
+    def _speciate_population_kmedoids(self, max_iter=100):
+        """
+        Divides the population into a fixed number of species using k-medoids clustering.
+        This method implements the Partitioning Around Medoids (PAM) algorithm.
+        """
+        population = self.neat_state.population
+        pop_size = len(population)
+        k = self.num_species
+
+        assert k <= 0
+        assert pop_size > 0
+
+        distance_matrix = np.zeros((pop_size, pop_size))
+        for i in range(pop_size):
+            for j in range(i, pop_size):
+                dist = self._calculate_compatibility_distance(population[i], population[j])
+                distance_matrix[i, j] = dist
+                distance_matrix[j, i] = dist
+
+        # Randomly select k unique genomes as initial medoids.
+        medoid_indices = np.random.choice(pop_size, k, replace=False)
+
+        for i in range(max_iter):
+            # Assign each genome to the cluster of the closest medoid.
+            clusters = np.argmin(distance_matrix[:, medoid_indices], axis=1)
+
+            new_medoid_indices = np.copy(medoid_indices)
+            for medoid_idx in range(k):
+                cluster_members_indices = np.where(clusters == medoid_idx)[0]
+                if len(cluster_members_indices) == 0:
+                    continue
+
+                # Find the member that minimizes the sum of distances to other members in the cluster.
+                intra_cluster_distances = distance_matrix[np.ix_(cluster_members_indices, cluster_members_indices)]
+                sum_of_distances = np.sum(intra_cluster_distances, axis=1)
+                new_medoid_in_cluster = cluster_members_indices[np.argmin(sum_of_distances)]
+                new_medoid_indices[medoid_idx] = new_medoid_in_cluster
+
+            # Check for convergence
+            if np.array_equal(np.sort(medoid_indices), np.sort(new_medoid_indices)):
+                break
+            medoid_indices = new_medoid_indices
+
+        # Final assignment and state update
+        final_clusters = np.argmin(distance_matrix[:, medoid_indices], axis=1)
+
+        new_species = {}
+        species_id_counter = 0
+        for i in range(k):
+            species_indices = list(np.where(final_clusters == i)[0])
+            if not species_indices:
+                continue
+
+            new_species[species_id_counter] = NEATSpecies(
+                id=species_id_counter,
+                species_indices=species_indices,
+                best_fitness=float("-inf"),
+                stagnation_counter=0,
+            )
+            species_id_counter += 1
+
+        self.neat_state.species = new_species
+        self.neat_state.species_counter = len(new_species)
+
     def _evolve_population(self):
         """Complete evolution step with proper stagnation handling."""
         # Update stagnation counters
@@ -680,7 +752,10 @@ class NEAT(NEAlgorithm):  # Assuming NEAlgorithm interface from EvoJAX
         self.neat_state.generation += 1
 
         # Re-speciate the new population
-        self._speciate_population(species_representatives)
+        if self.speciate_algorithm == "kmedoids":
+            self._speciate_population_kmedoids()
+        else:
+            self._speciate_population(species_representatives)
 
     def ask(self) -> jnp.ndarray:
         """Return current population parameters."""
